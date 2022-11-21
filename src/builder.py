@@ -4,16 +4,20 @@ import os
 import json
 from abc import ABCMeta, abstractmethod
 import utils
+import pathlib
 
 sys.path.insert(0, "/usr/lib/python3/dist-packages")
 sys.path.append("/usr/lib/freecad-daily/lib")
 sys.path.append("/usr/share/freecad-daily/Ext")
 sys.path.append("/usr/share/freecad-daily/Mod")
+sys.path.append("/usr/share/freecad-daily/Mod/Draft")
 sys.path.append("/usr/share/freecad-daily/Mod/Part")
 sys.path.append("/usr/share/freecad-daily/Mod/PartDesign")
 sys.path.append("/usr/share/freecad-daily/Mod/Sketcher")
+sys.path.append("/usr/share/freecad-daily/Mod/Arch")
 import FreeCAD  # noqa: E402
 import Import  # noqa: E402
+import importOBJ  # noqa: E402
 import Sketcher  # noqa: E402
 import Part  # noqa: E402
 from BasicShapes import Shapes  # noqa: E402
@@ -52,8 +56,11 @@ class Builder:
         family = utils.ShapeFamily[data['family'].upper().replace(" ", "_")]
         return self.shapers[family]
 
-    def get_data(self, reference, stacks, custom_dimensions=None, family=None):
-        return self.factory(reference=reference, family=family).get_data(reference, stacks, custom_dimensions)
+    def get_families(self):
+        families = {}
+        for shaper in self.shapers:
+            families[shaper.name.lower().replace("_", " ")] = self.factory({'family': shaper.name}).get_dimensions_and_subtypes()
+        return families
 
 
 class IShaper(metaclass=ABCMeta):
@@ -77,13 +84,16 @@ class IShaper(metaclass=ABCMeta):
     def flatten_dimensions(data):
         dimensions = data["dimensions"]
         for k, v in dimensions.items():
-            if "nominal" not in v:
-                if "maximum" not in v:
-                    v["nominal"] = v["minimum"]
-                elif "minimum" not in v:
-                    v["nominal"] = v["maximum"]
-                else:
-                    v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
+            if isinstance(v, dict):
+                if "nominal" not in v:
+                    if "maximum" not in v:
+                        v["nominal"] = v["minimum"]
+                    elif "minimum" not in v:
+                        v["nominal"] = v["maximum"]
+                    else:
+                        v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
+            else:
+                dimensions[k] = {"nominal": v}
         dim = {}
         for k, v in dimensions.items():
             dim[k] = v["nominal"] * 1000
@@ -105,7 +115,7 @@ class IShaper(metaclass=ABCMeta):
         return sketch
 
     @staticmethod
-    def extruce_sketch(sketch, part_name, height):
+    def extrude_sketch(sketch, part_name, height):
         document = FreeCAD.ActiveDocument
         part = document.addObject('Part::Extrusion', part_name)
         part.Base = sketch
@@ -126,6 +136,9 @@ class IShaper(metaclass=ABCMeta):
     def get_shape_extras(self, data, piece):
         return piece
 
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C", "D", "E", "F"]}
+
     def get_plate(self, data):
         project_name = f"{data['name']}_plate".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
         data["dimensions"] = self.flatten_dimensions(data)
@@ -138,7 +151,7 @@ class IShaper(metaclass=ABCMeta):
 
         part_name = "plate"
 
-        plate = self.extruce_sketch(
+        plate = self.extrude_sketch(
             sketch=sketch,
             part_name=part_name,
             height=data["dimensions"]["B"] - data["dimensions"]["D"]
@@ -146,9 +159,10 @@ class IShaper(metaclass=ABCMeta):
 
         document.recompute()
         Import.export([plate], f"{self.output_path}/{project_name}.step")
+        importOBJ.export([plate], f"{self.output_path}/{project_name}.obj")
         FreeCAD.closeDocument(project_name)
 
-        return f"{self.output_path}/{project_name}.step"
+        return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
 
     def get_piece(self, data):
         project_name = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -162,7 +176,7 @@ class IShaper(metaclass=ABCMeta):
 
         part_name = "piece"
 
-        base = self.extruce_sketch(
+        base = self.extrude_sketch(
             sketch=sketch,
             part_name=part_name,
             height=data["dimensions"]["B"]
@@ -183,12 +197,15 @@ class IShaper(metaclass=ABCMeta):
         piece.Source = piece_with_extra
 
         document.recompute()
+ 
+        pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
 
         Import.export([piece], f"{self.output_path}/{project_name}.step")
+        importOBJ.export([piece], f"{self.output_path}/{project_name}.obj")
         document.saveAs(f"{self.output_path}/{project_name}.FCStd")
         FreeCAD.closeDocument(project_name)
 
-        return f"{self.output_path}/{project_name}.step"
+        return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
 
     @abstractmethod
     def get_shape_base(self, data, sketch):
@@ -200,6 +217,14 @@ class IShaper(metaclass=ABCMeta):
 
 
 class P(IShaper):
+
+    def get_dimensions_and_subtypes(self):
+        return {
+            1: ["A", "B", "C", "D", "E", "F", "G", "H"],
+            2: ["A", "B", "C", "D", "E", "F", "G", "H"],
+            3: ["A", "B", "C", "D", "E", "F", "G", "H"],
+            4: ["A", "B", "C", "D", "E", "F", "G", "H"]
+        }
 
     def get_shape_extras(self, data, piece):
         dimensions = data["dimensions"]
@@ -433,6 +458,8 @@ class P(IShaper):
 
 
 class Pq(P):
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C", "D", "E", "F", "G", "J", "L"]} 
 
     def get_shape_base(self, data, sketch):
         dimensions = data["dimensions"]
@@ -550,6 +577,13 @@ class Pq(P):
 
 
 class Rm(P):
+    def get_dimensions_and_subtypes(self):
+        return {
+            1: ["A", "B", "C", "D", "E", "F", "G", "H", "J", "L"],
+            2: ["A", "B", "C", "D", "E", "F", "G", "H", "J", "L"],
+            3: ["A", "B", "C", "D", "E", "F", "G", "H", "J", "L"],
+            4: ["A", "B", "C", "D", "E", "F", "G", "H", "J", "L"]
+        }
 
     def get_shape_base(self, data, sketch):
         dimensions = data["dimensions"]
@@ -659,6 +693,11 @@ class Rm(P):
 
 
 class Pm(P):
+    def get_dimensions_and_subtypes(self):
+        return {
+            1: ["A", "B", "C", "D", "E", "F", "G", "H", "b", "t"],
+            2: ["A", "B", "C", "D", "E", "F", "G", "H", "b", "t"]
+        }
 
     def get_shape_base(self, data, sketch):
         dimensions = data["dimensions"]
@@ -813,6 +852,9 @@ class E(IShaper):
 
 
 class Er(E):
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C", "D", "E", "F", "G"]}
+
     def get_negative_winding_window(self, dimensions):
         document = FreeCAD.ActiveDocument
         winding_window = Shapes.addTube(FreeCAD.ActiveDocument, "winding_window")
@@ -863,6 +905,10 @@ class Etd(Er):
 
 
 class Lp(Er):
+    def get_dimensions_and_subtypes(self):
+        return {
+            1: ["A", "B", "C", "D", "E", "F", "G"],
+        }
 
     def get_shape_extras(self, data, piece):
         document = FreeCAD.ActiveDocument
@@ -934,6 +980,9 @@ class Lp(Er):
 
 
 class Eq(Er):
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C", "D", "E", "F", "G"]}
+
     def get_shape_extras(self, data, piece):
         document = FreeCAD.ActiveDocument
         dimensions = data["dimensions"]
@@ -972,6 +1021,9 @@ class Eq(Er):
 
 
 class Ec(Er):
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C", "D", "E", "F", "T", "s"]}
+
     def get_shape_base(self, data, sketch):
         dimensions = data["dimensions"]
 
@@ -1008,6 +1060,9 @@ class Ec(Er):
 
 
 class Ep(E):
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C", "D", "E", "F", "G", "K"]}
+
     def get_negative_winding_window(self, dimensions):
         document = FreeCAD.ActiveDocument
         winding_window = Shapes.addTube(FreeCAD.ActiveDocument, "winding_window")
@@ -1054,6 +1109,9 @@ class Ep(E):
 
 
 class Epx(E):
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C", "D", "E", "F", "G", "K"]}
+
     def get_negative_winding_window(self, dimensions):
         document = FreeCAD.ActiveDocument
 
@@ -1130,13 +1188,19 @@ class Epx(E):
 
 
 class Efd(E):
+    def get_dimensions_and_subtypes(self):
+        return {
+            1: ["A", "B", "C", "D", "E", "F", "F2", "K", "q"],
+            2: ["A", "B", "C", "D", "E", "F", "F2", "K", "q"]
+        }
+
     def get_shape_base(self, data, sketch):
         dimensions = data["dimensions"]
 
         c = dimensions["C"] / 2
         a = dimensions["A"] / 2
         e = dimensions["E"] / 2
-        f1 = dimensions["F1"] / 2
+        f1 = dimensions["F"] / 2
         f2 = dimensions["F2"]
         k = dimensions["K"]
         q = dimensions["q"]
@@ -1214,34 +1278,34 @@ class Efd(E):
         document = FreeCAD.ActiveDocument
         central_column_cube = document.addObject("Part::Box", "central_column_cube")
         central_column_cube.Length = dimensions["F2"]
-        central_column_cube.Width = dimensions["F1"]
+        central_column_cube.Width = dimensions["F"]
         central_column_cube.Height = dimensions["B"]
-        central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["F2"] / 2, -dimensions["F1"] / 2, 0), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+        central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["F2"] / 2, -dimensions["F"] / 2, 0), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
         top_right_vertex = self.edges_in_boundbox(part=central_column_cube,
                                                   xmin=0,
                                                   xmax=dimensions["F2"] / 2,
                                                   ymin=0,
-                                                  ymax=dimensions["F1"] / 2,
+                                                  ymax=dimensions["F"] / 2,
                                                   zmin=0,
                                                   zmax=dimensions["B"])[0]
         top_left_vertex = self.edges_in_boundbox(part=central_column_cube,
                                                  xmin=-dimensions["F2"] / 2,
                                                  xmax=0,
                                                  ymin=0,
-                                                 ymax=dimensions["F1"] / 2,
+                                                 ymax=dimensions["F"] / 2,
                                                  zmin=0,
                                                  zmax=dimensions["B"])[0]
         bottom_right_vertex = self.edges_in_boundbox(part=central_column_cube,
                                                      xmin=0,
                                                      xmax=dimensions["F2"] / 2,
-                                                     ymin=-dimensions["F1"] / 2,
+                                                     ymin=-dimensions["F"] / 2,
                                                      ymax=0,
                                                      zmin=0,
                                                      zmax=dimensions["B"])[0]
         bottom_left_vertex = self.edges_in_boundbox(part=central_column_cube,
                                                     xmin=-dimensions["F2"] / 2,
                                                     xmax=0,
-                                                    ymin=-dimensions["F1"] / 2,
+                                                    ymin=-dimensions["F"] / 2,
                                                     ymax=0,
                                                     zmin=0,
                                                     zmax=dimensions["B"])[0]
@@ -1252,7 +1316,7 @@ class Efd(E):
         for i in vertexes:  
             __chamfers__.append((i + 1, dimensions["q"], dimensions["q"]))
         chamfer.Edges = __chamfers__
-        central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2 + dimensions["K"], -dimensions["F1"] / 2, 0), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+        central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2 + dimensions["K"], -dimensions["F"] / 2, 0), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
         document.recompute()
 
         piece_with_column = document.addObject("Part::MultiFuse", "Fusion")
@@ -1262,6 +1326,9 @@ class Efd(E):
 
 
 class U(E):
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "B2", "C", "D", "E", "F", "H"]}
+
     def get_negative_winding_window(self, dimensions):
         document = FreeCAD.ActiveDocument
         central_hole = document.addObject("Part::Box", "central_hole")
@@ -1273,6 +1340,13 @@ class U(E):
 
 
 class Ur(E):
+    def get_dimensions_and_subtypes(self):
+        return {
+            1: ["A", "B", "C", "D", "E", "H"],
+            2: ["A", "B", "C", "D", "E"],
+            3: ["A", "B", "C", "D", "E", "F", "H"],
+            4: ["A", "B", "C", "D", "E", "F", "G", "H"]
+        }
 
     def get_shape_extras(self, data, piece):
         dimensions = data["dimensions"]
@@ -1425,18 +1499,14 @@ class T(IShaper):
 
 if __name__ == '__main__':  # pragma: no cover
 
-    with open(f'{os.path.dirname(os.path.abspath(__file__))}/../MAS/data/shapes.ndjson', 'r') as f:
-        for ndjson_line in f.readlines():
-            data = json.loads(ndjson_line)
-            if data["family"] == 'ur':
-                core = Builder().factory(data)
-                core.get_piece(data)
 
-    # data = {"type": "standard", "family": "ur", "aliases": [], "name": "UR 48/39/17",                          "dimensions": {"A": {"nominal": 0.04800}, "D": {"nominal": 0.02690}, "C": {"nominal": 0.01700}, "E": {"minimum": 0.01740}, "H": {"nominal": 0.01300}, "B": {"nominal": 0.03940}}, "familySubtype": "1"}
-    # data = {"type": "standard", "family": "ur", "aliases": [], "name": "UR 42/21/12",                          "dimensions": {"A": {"nominal": 0.04180}, "D": {"nominal": 0.01110}, "C": {"nominal": 0.01190}, "E": {"minimum": 0.01820}, "H": {"nominal": 0.01190}, "B": {"nominal": 0.02060}}, "familySubtype": "2"}
-    # data = {"type": "standard", "family": "ur", "aliases": [], "name": "UR 55/38/36",                          "dimensions": {"A": {"nominal": 0.05490}, "D": {"nominal": 0.02550}, "C": {"nominal": 0.03600}, "E": {"minimum": 0.01960}, "H": {"nominal": 0.01200}, "B": {"nominal": 0.03750}, "F": {"nominal": 0.02350}}, "familySubtype": "3"}
-    # data = {"type": "standard", "family": "ur", "aliases": [], "name": "UR 64/40/20-D",                        "dimensions": {"A": {"nominal": 0.06400}, "D": {"nominal": 0.02650}, "C": {"nominal": 0.02400}, "E": {"minimum": 0.02320}, "H": {"nominal": 0.02000}, "B": {"nominal": 0.04050}, "G": {"nominal": 0.00510}, "F": {"nominal": 0.02000}}, "familySubtype": "4"}
+    FreeCAD.newDocument("ea")
+    document = FreeCAD.getDocument("ea")
 
-    # core = Builder().factory(data)
-
-    # core.get_piece(data)
+    cube = document.addObject("Part::Box", "cube")
+    cube.Length = 1
+    cube.Width = 1
+    cube.Height = 1
+    document.recompute()
+    Import.export([cube], "ea.step")
+    Import.export([cube], "ea.gltf")

@@ -32,7 +32,18 @@ class Tests(unittest.TestCase):
                     core.get_piece(data)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
+                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj"))
+
+    def test_get_families(self):
+        
+        families = builder.Builder().get_families()
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+            for ndjson_line in f.readlines():
+                data = json.loads(ndjson_line)
+                if data["family"] not in ['ui']:
+                    self.assertTrue(data["family"] in list(families.keys()))
 
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
+
