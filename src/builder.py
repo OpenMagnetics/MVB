@@ -21,7 +21,14 @@ import importOBJ  # noqa: E402
 import Sketcher  # noqa: E402
 import Part  # noqa: E402
 from BasicShapes import Shapes  # noqa: E402
+import TechDraw
+import FreeCADGui 
+FreeCADGui.showMainWindow()
+import ImportGui 
+import TechDrawGui 
 
+mw = FreeCADGui.getMainWindow()
+mw.hide()
 
 class Builder:
     """
@@ -139,73 +146,90 @@ class IShaper(metaclass=ABCMeta):
     def get_dimensions_and_subtypes(self):
         return {1: ["A", "B", "C", "D", "E", "F"]}
 
+    def get_technical_drawing(self):
+        raise NotImplementedError
+
     def get_plate(self, data):
-        project_name = f"{data['name']}_plate".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-        data["dimensions"] = self.flatten_dimensions(data)
+        try:
+            project_name = f"{data['name']}_plate".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+            data["dimensions"] = self.flatten_dimensions(data)
 
-        sketch = self.create_sketch(project_name)
-        self.get_shape_base(data, sketch)
+            sketch = self.create_sketch(project_name)
+            self.get_shape_base(data, sketch)
 
-        document = FreeCAD.ActiveDocument
-        document.recompute()
+            document = FreeCAD.ActiveDocument
+            document.recompute()
 
-        part_name = "plate"
+            part_name = "plate"
 
-        plate = self.extrude_sketch(
-            sketch=sketch,
-            part_name=part_name,
-            height=data["dimensions"]["B"] - data["dimensions"]["D"]
-        )
+            plate = self.extrude_sketch(
+                sketch=sketch,
+                part_name=part_name,
+                height=data["dimensions"]["B"] - data["dimensions"]["D"]
+            )
 
-        document.recompute()
-        Import.export([plate], f"{self.output_path}/{project_name}.step")
-        importOBJ.export([plate], f"{self.output_path}/{project_name}.obj")
-        FreeCAD.closeDocument(project_name)
+            document.recompute()
+            Import.export([plate], f"{self.output_path}/{project_name}.step")
+            importOBJ.export([plate], f"{self.output_path}/{project_name}.obj")
 
-        return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+            FreeCAD.closeDocument(project_name)
+
+            return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+        except:  # noqa: E722
+            FreeCAD.closeDocument(project_name)
+            return None, None
 
     def get_piece(self, data):
-        project_name = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-        data["dimensions"] = self.flatten_dimensions(data)
+        # try:
+            project_name = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+            data["dimensions"] = self.flatten_dimensions(data)
 
-        sketch = self.create_sketch(project_name)
-        self.get_shape_base(data, sketch)
+            sketch = self.create_sketch(project_name)
+            self.get_shape_base(data, sketch)
 
-        document = FreeCAD.ActiveDocument
-        document.recompute()
+            document = FreeCAD.ActiveDocument
+            document.recompute()
 
-        part_name = "piece"
+            part_name = "piece"
 
-        base = self.extrude_sketch(
-            sketch=sketch,
-            part_name=part_name,
-            height=data["dimensions"]["B"]
-        )
-        
-        document.recompute()
+            base = self.extrude_sketch(
+                sketch=sketch,
+                part_name=part_name,
+                height=data["dimensions"]["B"]
+            )
+            
+            document.recompute()
 
-        negative_winding_window = self.get_negative_winding_window(data["dimensions"])
+            negative_winding_window = self.get_negative_winding_window(data["dimensions"])
 
-        piece_cut = document.addObject("Part::Cut", "Cut")
-        piece_cut.Base = base
-        piece_cut.Tool = negative_winding_window
-        document.recompute()
+            piece_cut = document.addObject("Part::Cut", "Cut")
+            piece_cut.Base = base
+            piece_cut.Tool = negative_winding_window
+            document.recompute()
 
-        piece_with_extra = self.get_shape_extras(data, piece_cut)
+            piece_with_extra = self.get_shape_extras(data, piece_cut)
 
-        piece = document.addObject('Part::Refine', 'Refine')
-        piece.Source = piece_with_extra
+            piece = document.addObject('Part::Refine', 'Refine')
+            piece.Source = piece_with_extra
 
-        document.recompute()
- 
-        pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
+            document.recompute()
 
-        Import.export([piece], f"{self.output_path}/{project_name}.step")
-        importOBJ.export([piece], f"{self.output_path}/{project_name}.obj")
-        document.saveAs(f"{self.output_path}/{project_name}.FCStd")
-        FreeCAD.closeDocument(project_name)
+            page = self.get_technical_drawing(data, piece)
+     
+            pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
 
-        return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+            Import.export([piece], f"{self.output_path}/{project_name}.step")
+            ImportGui.export([page], f"{self.output_path}/{project_name}.pdf")
+            importOBJ.export([piece], f"{self.output_path}/{project_name}.obj")
+            TechDrawGui.exportPageAsSvg(page, f"{self.output_path}/{project_name}.svg")
+
+            document.saveAs(f"{self.output_path}/{project_name}.FCStd")
+            FreeCAD.closeDocument(project_name)
+
+            return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+        # except ValueError:
+        #     FreeCAD.closeDocument(project_name)
+        #     return None, None
 
     @abstractmethod
     def get_shape_base(self, data, sketch):
@@ -222,7 +246,7 @@ class P(IShaper):
         return {
             1: ["A", "B", "C", "D", "E", "F", "G", "H"],
             2: ["A", "B", "C", "D", "E", "F", "G", "H"],
-            3: ["A", "B", "C", "D", "E", "F", "G", "H"],
+            3: ["A", "B", "D", "E", "F", "G", "H"],
             4: ["A", "B", "C", "D", "E", "F", "G", "H"]
         }
 
@@ -459,7 +483,7 @@ class P(IShaper):
 
 class Pq(P):
     def get_dimensions_and_subtypes(self):
-        return {1: ["A", "B", "C", "D", "E", "F", "G", "J", "L"]} 
+        return {1: ["A", "B", "C", "D", "E", "F", "G"]} 
 
     def get_shape_base(self, data, sketch):
         dimensions = data["dimensions"]
@@ -579,10 +603,10 @@ class Pq(P):
 class Rm(P):
     def get_dimensions_and_subtypes(self):
         return {
-            1: ["A", "B", "C", "D", "E", "F", "G", "H", "J", "L"],
-            2: ["A", "B", "C", "D", "E", "F", "G", "H", "J", "L"],
-            3: ["A", "B", "C", "D", "E", "F", "G", "H", "J", "L"],
-            4: ["A", "B", "C", "D", "E", "F", "G", "H", "J", "L"]
+            1: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
+            2: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
+            3: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
+            4: ["A", "B", "C", "D", "E", "F", "G", "H", "J"]
         }
 
     def get_shape_base(self, data, sketch):
@@ -710,7 +734,14 @@ class Pm(P):
         f = dimensions["F"] / 2
         b = dimensions["b"] / 2
         t = dimensions["t"]
-        alpha = dimensions["alpha"] / 1000 / 180 * math.pi
+
+        if 'alpha' not in dimensions:
+            if familySubtype == '1':
+                dimensions["alpha"] = 120000  # I know... chapuza
+            else:
+                dimensions["alpha"] = 90000  # I know... chapuza
+
+        alpha = dimensions["alpha"] / 1000 / 180 * math.pi  # I know... chapuza
         beta = math.asin(g / e)
         xc = f
         z = c - e * math.cos(beta) + e * math.sin(beta)
@@ -850,6 +881,96 @@ class E(IShaper):
     def get_shape_extras(self, data, piece):
         return piece
 
+    def get_technical_drawing(self, data, piece):
+        def get_current_vertex_index(view):
+            i = 0
+            try:
+                while i < 10000:
+                    view.getVertexByIndex(i).Tag
+                    i += 1
+            except ValueError:
+                current_vertex_index = i
+            return current_vertex_index
+
+        def create_dimension(view, starting_coordinates, ending_coordinates, dimension_type, dimension_name, label_offset=0):
+            current_vertex_index = get_current_vertex_index(view)
+            print(current_vertex_index)
+            view.makeCosmeticVertex(starting_coordinates)
+            print("Mierda")
+            starting_point_index = current_vertex_index
+            view.makeCosmeticVertex(ending_coordinates)
+            ending_point_index = current_vertex_index + 1
+
+            dimension = document.addObject('TechDraw::DrawViewDimension', dimension_name)
+            dimension.Type = dimension_type
+            _x = (starting_coordinates[0] + (ending_coordinates[0] - starting_coordinates[0]) / 2) * scale
+            _y = (starting_coordinates[1] + (ending_coordinates[1] - starting_coordinates[1]) / 2) * scale
+            print(_y)
+            if dimension_type == "DistanceY":
+                dimension.X = _x + label_offset * scale
+                dimension.Y = _y
+            elif dimension_type == "DistanceX":
+                dimension.X = _x
+                dimension.Y = _y + label_offset * scale
+            dimension.FormatSpec = f"{dimension_name}: %.2w mm"
+            dimension.References2D = [(view, f"Vertex{starting_point_index}"), (view, f"Vertex{ending_point_index}")]
+            document.recompute()
+            return dimension
+
+        dimensions = data["dimensions"]
+        scaled_dimensions = {}
+        for key, value in dimensions.items():
+            scaled_dimensions[key] = value
+
+        scale = 13
+        space_between_views = scaled_dimensions['C']
+
+        document = FreeCAD.ActiveDocument
+        page = document.addObject('TechDraw::DrawPage', 'Page')
+        document.addObject('TechDraw::DrawSVGTemplate', 'Template')
+        document.Template.Template = f"{os.path.dirname(os.path.abspath(__file__))}/templates/blank_background.svg"
+        page.Template = document.Template
+        document.recompute()        
+
+        front_view = document.addObject('TechDraw::DrawViewPart', 'FrontView')
+        page.addView(front_view)
+        front_view.Source = [piece]
+        front_view.Direction = FreeCAD.Vector(1.00, 0.00, 0.00)
+        front_view.XDirection = FreeCAD.Vector(0.00, 1.00, 0.00)
+        front_view.X = scaled_dimensions['A'] * scale
+        front_view.Y = scaled_dimensions['B'] * scale
+        # front_view.XDirection = FreeCAD.Vector(0.00, 0.00, 1.00)
+        front_view.Scale = scale
+        document.recompute()
+
+        dimension_a = create_dimension(front_view, FreeCAD.Vector(scaled_dimensions['A'] / 2, scaled_dimensions['B'] / 2, 0), FreeCAD.Vector(-scaled_dimensions['A'] / 2, scaled_dimensions['B'] / 2, 0), 'DistanceX', 'A', 2.5)
+        page.addView(dimension_a)
+        dimension_e = create_dimension(front_view, FreeCAD.Vector(scaled_dimensions['E'] / 2, scaled_dimensions['B'] / 2, 0), FreeCAD.Vector(-scaled_dimensions['E'] / 2, scaled_dimensions['B'] / 2, 0), 'DistanceX', 'E', 1.75)
+        page.addView(dimension_e)
+        dimension_f = create_dimension(front_view, FreeCAD.Vector(scaled_dimensions['F'] / 2, scaled_dimensions['B'] / 2, 0), FreeCAD.Vector(-scaled_dimensions['F'] / 2, scaled_dimensions['B'] / 2, 0), 'DistanceX', 'F', 1)
+        page.addView(dimension_f)
+        dimension_b = create_dimension(front_view, FreeCAD.Vector(-scaled_dimensions['A'] / 2, scaled_dimensions['B'] / 2, 0), FreeCAD.Vector(-scaled_dimensions['A'] / 2, -scaled_dimensions['B'] / 2, 0), 'DistanceY', 'B', -1.75)
+        page.addView(dimension_b)
+        dimension_d = create_dimension(front_view, FreeCAD.Vector(-scaled_dimensions['A'] / 2, scaled_dimensions['D'] / 2, 0), FreeCAD.Vector(-scaled_dimensions['A'] / 2, -scaled_dimensions['D'] / 2, 0), 'DistanceY', 'D', -1)
+        page.addView(dimension_d)
+        document.recompute()
+
+        lateral_view_offset = 1.5 * scaled_dimensions['A'] + space_between_views
+        lateral_view = document.addObject('TechDraw::DrawViewPart', 'LateralView')
+        page.addView(lateral_view)
+        lateral_view.Source = [piece]
+        lateral_view.Direction = FreeCAD.Vector(0.00, 1.00, 0.00)
+        lateral_view.XDirection = FreeCAD.Vector(1.00, 0.00, 0.00)
+        lateral_view.X = lateral_view_offset * scale
+        lateral_view.Y = scaled_dimensions['B'] * scale
+        lateral_view.Scale = scale
+        document.recompute()
+        dimension_c = create_dimension(lateral_view, FreeCAD.Vector(-scaled_dimensions['C'] / 2, scaled_dimensions['B'] / 2, 0), FreeCAD.Vector(scaled_dimensions['C'] / 2, scaled_dimensions['B'] / 2, 0), 'DistanceX', 'C', 1)
+        page.addView(dimension_c)
+        document.recompute()
+
+        return page
+
 
 class Er(E):
     def get_dimensions_and_subtypes(self):
@@ -901,7 +1022,8 @@ class Er(E):
 
 
 class Etd(Er):
-    pass
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C", "D", "E", "F"]}
 
 
 class Lp(Er):
@@ -1091,7 +1213,7 @@ class Ep(E):
         lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] - dimensions["F"] / 2, -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
         shapes = [winding_window, lateral_top_cube, lateral_bottom_cube, lateral_right_cube]
-        if "G" in dimensions:
+        if "G" in dimensions and dimensions['G'] > 0:
             lateral_left_cube = document.addObject("Part::Box", "lateral_left_cube")
             lateral_left_cube.Length = dimensions["C"] / 2 - dimensions["F"] / 2
             lateral_left_cube.Width = dimensions["G"]
@@ -1159,10 +1281,10 @@ class Epx(E):
         lateral_bottom_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
         lateral_right_cube = document.addObject("Part::Box", "lateral_right_cube")
-        lateral_right_cube.Length = dimensions["C"] / 2 - dimensions["F"] / 2
+        lateral_right_cube.Length = dimensions["C"] / 2
         lateral_right_cube.Width = dimensions["E"]
         lateral_right_cube.Height = dimensions["D"]
-        lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["F"] / 2, -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+        lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["F"] / 2, -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
         shapes = [winding_window_cylinder_left, lateral_top_cube, lateral_bottom_cube, lateral_right_cube]
         if "G" in dimensions and dimensions["G"] > 0:
@@ -1327,7 +1449,7 @@ class Efd(E):
 
 class U(E):
     def get_dimensions_and_subtypes(self):
-        return {1: ["A", "B", "B2", "C", "D", "E", "F", "H"]}
+        return {1: ["A", "B", "C", "D", "E", "H"]}
 
     def get_negative_winding_window(self, dimensions):
         document = FreeCAD.ActiveDocument
@@ -1499,14 +1621,10 @@ class T(IShaper):
 
 if __name__ == '__main__':  # pragma: no cover
 
-
-    FreeCAD.newDocument("ea")
-    document = FreeCAD.getDocument("ea")
-
-    cube = document.addObject("Part::Box", "cube")
-    cube.Length = 1
-    cube.Width = 1
-    cube.Height = 1
-    document.recompute()
-    Import.export([cube], "ea.step")
-    Import.export([cube], "ea.gltf")
+    with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        for ndjson_line in f.readlines():
+            data = json.loads(ndjson_line)
+            if data["family"] == 'e':
+                core = Builder().factory(data)
+                core.get_piece(data)
+                break
