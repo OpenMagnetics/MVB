@@ -306,7 +306,7 @@ class IShaper(metaclass=ABCMeta):
                 pass
             return None, None
 
-    def get_piece_technical_drawing(self, data, colors=None):
+    def get_piece_technical_drawing(self, data, colors=None, save_files=False):
         try:
             project_name = f"{data['name']}_piece_scaled".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
             if colors is None:
@@ -357,9 +357,10 @@ class IShaper(metaclass=ABCMeta):
 
             top_view = self.get_top_projection(data, piece, margin)
             front_view = self.get_front_projection(data, piece, margin)
-            document.saveAs(f"{self.output_path}/{project_name}.FCStd")
-            top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors)
-            front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors)
+            if save_files:
+                document.saveAs(f"{self.output_path}/{project_name}.FCStd")
+            top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors, save_files)
+            front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors, save_files)
 
             FreeCAD.closeDocument(project_name)
 
@@ -369,7 +370,7 @@ class IShaper(metaclass=ABCMeta):
             FreeCAD.closeDocument(project_name)
             return {"top_view": None, "front_view": None}
 
-    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors):
+    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
         def calculate_total_dimensions():
             if view.Name == "TopView":
                 base_width = data['dimensions']['A'] + margin
@@ -621,9 +622,10 @@ class IShaper(metaclass=ABCMeta):
 
         svgFile_data += tail
 
-        svgFile = open(f"{self.output_path}/{project_name}_{view.Name}.svg", "w")
-        svgFile.write(svgFile_data) 
-        svgFile.close() 
+        if save_files:
+            svgFile = open(f"{self.output_path}/{project_name}_{view.Name}.svg", "w")
+            svgFile.write(svgFile_data) 
+            svgFile.close() 
         return svgFile_data
 
     @abstractmethod
@@ -1988,7 +1990,7 @@ class Ur(IShaper):
         central_hole.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["A"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
         return central_hole
 
-    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors):
+    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
         def calculate_total_dimensions():
             if view.Name == "TopView":
                 base_width = data['dimensions']['A'] + margin
@@ -2177,9 +2179,10 @@ class Ur(IShaper):
 
         svgFile_data += tail
         
-        svgFile = open(f"{self.output_path}/{project_name}_{view.Name}.svg", "w")
-        svgFile.write(svgFile_data)
-        svgFile.close() 
+        if save_files:
+            svgFile = open(f"{self.output_path}/{project_name}_{view.Name}.svg", "w")
+            svgFile.write(svgFile_data)
+            svgFile.close() 
         return svgFile_data
 
 
