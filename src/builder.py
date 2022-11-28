@@ -147,10 +147,9 @@ class IShaper(metaclass=ABCMeta):
 
         document = FreeCAD.ActiveDocument
         page = document.addObject('TechDraw::DrawPage', 'Top Page')
-        document.addObject('TechDraw::DrawSVGTemplate', 'Template')
-        document.Template.Template = f"{os.path.dirname(os.path.abspath(__file__))}/templates/blank_background.svg"
-        page.Template = document.Template
-        document.recompute()        
+        template = document.addObject('TechDraw::DrawSVGTemplate', 'Template')
+        page.Template = template
+        document.recompute()
 
         top_view = document.addObject('TechDraw::DrawViewPart', 'TopView')
         page.addView(top_view)
@@ -389,6 +388,8 @@ class IShaper(metaclass=ABCMeta):
                 else:
                     base_height = data['dimensions']['C'] + margin
 
+                if 'A' in dimensions:
+                    base_height += increment
                 if 'E' in dimensions:
                     base_height += increment
                 if 'F' in dimensions:
