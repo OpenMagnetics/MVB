@@ -176,25 +176,10 @@ class IShaper(metaclass=ABCMeta):
         dimensions = data["dimensions"]
 
         document = FreeCAD.ActiveDocument
-        page = document.addObject('TechDraw::DrawPage', 'Front Page')
-        document.addObject('TechDraw::DrawSVGTemplate', 'Template')
-        document.Template.Template = f"{os.path.dirname(os.path.abspath(__file__))}/templates/blank_background.svg"
-        page.Template = document.Template
-        document.recompute()        
-
-        # front_view = document.addObject('TechDraw::DrawViewPart', 'FrontView')
-        # page.addView(front_view)
-        # front_view.Source = [piece]
-        # if data['family'] in ["ep", "epx"]:
-        #     front_view.Direction = FreeCAD.Vector(1.00, 0.00, 0.00)
-        #     front_view.XDirection = FreeCAD.Vector(0.00, 1.00, 0.00)
-        # else:
-        #     front_view.Direction = FreeCAD.Vector(-1.00, 0.00, 0.00)
-        #     front_view.XDirection = FreeCAD.Vector(0.00, -1.00, 0.00)
-        # front_view.X = margin + dimensions['A'] / 2
-        # front_view.Y = 1000 - margin - dimensions['B'] / 2
-        # front_view.Scale = 1
-        # document.recompute()
+        page = document.addObject('TechDraw::DrawPage', 'Top Page')
+        template = document.addObject('TechDraw::DrawSVGTemplate', 'Template')
+        page.Template = template
+        document.recompute()
 
         if data['family'] in ['efd']:
             semi_depth = -dimensions['C'] / 2 + dimensions['K'] + dimensions['F2'] / 2
