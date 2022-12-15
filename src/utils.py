@@ -29,6 +29,7 @@ class ShapeFamily(enum.Enum, metaclass=Meta):
     PLANAR_EL = enum.auto()
     EC = enum.auto()
     UR = enum.auto()
+    UT = enum.auto()
     LP = enum.auto()
     T = enum.auto()
 

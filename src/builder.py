@@ -4,7 +4,9 @@ import os
 import json
 from abc import ABCMeta, abstractmethod
 import utils
+import copy
 import pathlib
+import PyMKF
 
 sys.path.insert(0, "/usr/lib/python3/dist-packages")
 sys.path.append("/usr/lib/freecad-daily/lib")
@@ -50,6 +52,7 @@ class Builder:
             utils.ShapeFamily.EFD: Efd(),
             utils.ShapeFamily.U: U(),
             utils.ShapeFamily.UR: Ur(),
+            utils.ShapeFamily.UT: Ut(),
             utils.ShapeFamily.T: T()
         }
 
@@ -62,6 +65,156 @@ class Builder:
         for shaper in self.shapers:
             families[shaper.name.lower().replace("_", " ")] = self.factory({'family': shaper.name}).get_dimensions_and_subtypes()
         return families
+
+    def get_spacer(self, geometrical_data):
+        document = FreeCAD.ActiveDocument
+        document.recompute()
+
+        spacer = document.addObject("Part::Box", "Spacer")
+        spacer.Length = geometrical_data["dimensions"][2] * 1000
+        spacer.Width = geometrical_data["dimensions"][0] * 1000
+        spacer.Height = geometrical_data["dimensions"][1] * 1000
+        spacer.Placement = FreeCAD.Placement(FreeCAD.Vector((geometrical_data["coordinates"][2] - geometrical_data["dimensions"][2] / 2) * 1000,
+                                                            (geometrical_data["coordinates"][0] - geometrical_data["dimensions"][0] / 2) * 1000,
+                                                            (geometrical_data["coordinates"][1] - geometrical_data["dimensions"][1] / 2) * 1000),
+                                             FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        document.recompute()
+        m = spacer.Placement.Matrix
+        m.rotateX(geometrical_data['rotation'][2])
+        m.rotateY(geometrical_data['rotation'][0])
+        m.rotateZ(geometrical_data['rotation'][1])
+        spacer.Placement.Matrix = m
+        document.recompute()
+        return spacer
+
+    def get_core(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../output/', save_files=True, export_files=True):
+        try:
+            pieces_to_export = []
+            project_name = f"{project_name}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            FreeCAD.newDocument(project_name)
+            document = FreeCAD.getDocument(project_name)
+
+            for index, geometrical_part in enumerate(geometrical_description):
+                if geometrical_part['type'] == 'spacer':
+                    spacer = self.get_spacer(geometrical_part)
+                    pieces_to_export.append(spacer)
+                elif geometrical_part['type'] == 'half set':
+                    shape_data = geometrical_part['shape']
+                    part_builder = Builder().factory(shape_data)
+
+                    piece = part_builder.get_piece(data=copy.deepcopy(shape_data),
+                                                   name=f"Piece_{index}",
+                                                   save_files=True,
+                                                   export_files=False)
+
+                    m = piece.Placement.Matrix
+                    m.rotateX(geometrical_part['rotation'][2])
+                    m.rotateY(geometrical_part['rotation'][0])
+                    m.rotateZ(geometrical_part['rotation'][1])
+                    piece.Placement.Matrix = m
+                    document.recompute()
+
+                    print(geometrical_part['coordinates'])
+                    piece.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
+                                                        geometrical_part['coordinates'][0] * 1000,
+                                                        geometrical_part['coordinates'][1] * 1000))
+                    document.recompute()
+
+                    if geometrical_part['machining'] is not None:
+                        for machining in geometrical_part['machining']:
+                            piece = part_builder.apply_machining(piece=piece,
+                                                                 machining=machining,
+                                                                 dimensions=part_builder.flatten_dimensions(shape_data))
+                        document.recompute()
+
+                    pieces_to_export.append(piece)
+
+            if export_files:
+                Import.export(pieces_to_export, f"{output_path}/{project_name}.step")
+                importOBJ.export(pieces_to_export, f"{output_path}/{project_name}.obj")
+
+            if save_files:
+                document.saveAs(f"{output_path}/{project_name}.FCStd")
+
+            FreeCAD.closeDocument(project_name)
+
+            return f"{output_path}/{project_name}.step", f"{output_path}/{project_name}.obj"
+
+        except:  # noqa: E722
+            try:
+                FreeCAD.closeDocument(project_name)
+            except NameError:
+                pass
+            return None, None
+
+    # def get_core_gapping_technical_drawing(self, data, colors=None, save_files=False):
+    #     try:
+    #         project_name = f"{data['name']}_core_scaled".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+    #         if colors is None:
+    #             colors = {
+    #                 "projection_color": "#000000",
+    #                 "dimension_color": "#000000"
+    #             }
+
+    #         original_dimensions = self.flatten_dimensions(data)
+    #         scale = 1000 / (1.25 * original_dimensions['A'])
+    #         data["dimensions"] = {}
+    #         for k, v in original_dimensions.items():
+    #             data["dimensions"][k] = v * scale
+
+    #         FreeCAD.newDocument(project_name)
+    #         document = FreeCAD.getDocument(project_name)
+
+    #         sketch = self.create_sketch()
+    #         self.get_shape_base(data, sketch)
+
+    #         document = FreeCAD.ActiveDocument
+    #         document.recompute()
+
+    #         part_name = "piece"
+
+    #         base = self.extrude_sketch(
+    #             sketch=sketch,
+    #             part_name=part_name,
+    #             height=data["dimensions"]["B"]
+    #         )
+            
+    #         document.recompute()
+
+    #         negative_winding_window = self.get_negative_winding_window(data["dimensions"])
+
+    #         piece_cut = document.addObject("Part::Cut", "Cut")
+    #         piece_cut.Base = base
+    #         piece_cut.Tool = negative_winding_window
+    #         document.recompute()
+
+    #         piece_with_extra = self.get_shape_extras(data, piece_cut)
+
+    #         piece = document.addObject('Part::Refine', 'Refine')
+    #         piece.Source = piece_with_extra
+
+    #         document.recompute()
+
+    #         pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
+
+    #         margin = 35
+
+    #         top_view = self.get_top_projection(data, piece, margin)
+    #         front_view = self.get_front_projection(data, piece, margin)
+    #         if save_files:
+    #             document.saveAs(f"{self.output_path}/{project_name}.FCStd")
+    #         top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors, save_files)
+    #         front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors, save_files)
+
+    #         FreeCAD.closeDocument(project_name)
+
+    #         return {"top_view": top_view_file, "front_view": front_view_file}
+    #     except Exception as e:  # noqa: E722
+    #         print(e)
+    #         FreeCAD.closeDocument(project_name)
+    #         return {"top_view": None, "front_view": None}
 
 
 class IShaper(metaclass=ABCMeta):
@@ -103,9 +256,8 @@ class IShaper(metaclass=ABCMeta):
         return dim
 
     @staticmethod
-    def create_sketch(project_name):
-        FreeCAD.newDocument(project_name)
-        document = FreeCAD.getDocument(project_name)
+    def create_sketch():
+        document = FreeCAD.ActiveDocument
 
         document.addObject('PartDesign::Body', 'Body')
         document.recompute()
@@ -209,12 +361,18 @@ class IShaper(metaclass=ABCMeta):
 
         return section_front_view
 
-    def get_plate(self, data):
+    def get_plate(self, data, save_files=False, export_files=True):
         try:
             project_name = f"{data['name']}_plate".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
             data["dimensions"] = self.flatten_dimensions(data)
 
-            sketch = self.create_sketch(project_name)
+            close_file_after_finishing = False
+            if FreeCAD.ActiveDocument is None:
+                close_file_after_finishing = True
+                FreeCAD.newDocument(project_name)
+            document = FreeCAD.ActiveDocument
+
+            sketch = self.create_sketch()
             self.get_shape_base(data, sketch)
 
             document = FreeCAD.ActiveDocument
@@ -229,22 +387,36 @@ class IShaper(metaclass=ABCMeta):
             )
 
             document.recompute()
-            Import.export([plate], f"{self.output_path}/{project_name}.step")
-            importOBJ.export([plate], f"{self.output_path}/{project_name}.obj")
-            FreeCAD.closeDocument(project_name)
+            if export_files:
+                Import.export([plate], f"{self.output_path}/{project_name}.step")
+                importOBJ.export([plate], f"{self.output_path}/{project_name}.obj")
 
-            return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+            if save_files:
+                document.saveAs(f"{self.output_path}/{project_name}.FCStd")
+
+            if close_file_after_finishing:
+                FreeCAD.closeDocument(project_name)
+                return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+            else:
+                return plate
+
         except:  # noqa: E722
             FreeCAD.closeDocument(project_name)
             return None, None
 
-    def get_piece(self, data):
+    def get_piece(self, data, name="Piece", save_files=False, export_files=True):
         try:
             project_name = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
 
             data["dimensions"] = self.flatten_dimensions(data)
 
-            sketch = self.create_sketch(project_name)
+            close_file_after_finishing = False
+            if FreeCAD.ActiveDocument is None:
+                close_file_after_finishing = True
+                FreeCAD.newDocument(project_name)
+            document = FreeCAD.ActiveDocument
+
+            sketch = self.create_sketch()
             self.get_shape_base(data, sketch)
 
             document = FreeCAD.ActiveDocument
@@ -269,20 +441,28 @@ class IShaper(metaclass=ABCMeta):
 
             piece_with_extra = self.get_shape_extras(data, piece_cut)
 
-            piece = document.addObject('Part::Refine', 'Refine')
+            piece = document.addObject('Part::Refine', name)
             piece.Source = piece_with_extra
 
             document.recompute()
 
+            piece.Placement.move(FreeCAD.Vector(0, 0, -data["dimensions"]["B"]))
+            document.recompute()
+
             pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
 
-            Import.export([piece], f"{self.output_path}/{project_name}.step")
-            importOBJ.export([piece], f"{self.output_path}/{project_name}.obj")
+            if export_files:
+                Import.export([piece], f"{self.output_path}/{project_name}.step")
+                importOBJ.export([piece], f"{self.output_path}/{project_name}.obj")
 
-            document.saveAs(f"{self.output_path}/{project_name}.FCStd")
-            FreeCAD.closeDocument(project_name)
+            if save_files:
+                document.saveAs(f"{self.output_path}/{project_name}.FCStd")
 
-            return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+            if close_file_after_finishing:
+                FreeCAD.closeDocument(project_name)
+                return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+            else:
+                return piece
         except:  # noqa: E722
             try:
                 FreeCAD.closeDocument(project_name)
@@ -305,7 +485,11 @@ class IShaper(metaclass=ABCMeta):
             for k, v in original_dimensions.items():
                 data["dimensions"][k] = v * scale
 
-            sketch = self.create_sketch(project_name)
+            if FreeCAD.ActiveDocument is None:
+                FreeCAD.newDocument(project_name)
+            document = FreeCAD.getDocument(project_name)
+
+            sketch = self.create_sketch()
             self.get_shape_base(data, sketch)
 
             document = FreeCAD.ActiveDocument
@@ -621,6 +805,50 @@ class IShaper(metaclass=ABCMeta):
     @abstractmethod
     def get_negative_winding_window(self, dimensions):
         raise NotImplementedError
+
+    def apply_machining(self, piece, machining, dimensions):
+        document = FreeCAD.ActiveDocument
+        # print(machining)
+
+        original_tool = document.addObject("Part::Box", "tool")
+        original_tool.Length = dimensions["A"]
+        x_coordinate = -dimensions["A"] / 2
+        if machining['coordinates'][0] == 0:
+            original_tool.Width = dimensions["F"]
+            original_tool.Length = dimensions["F"]
+            y_coordinate = -dimensions["F"] / 2
+            x_coordinate = -dimensions["F"] / 2
+        else:
+            original_tool.Width = dimensions["A"] / 2
+            if machining['coordinates'][0] > 0:
+                y_coordinate = 0
+            if machining['coordinates'][0] < 0:
+                y_coordinate = -dimensions["A"] / 2
+
+        original_tool.Height = machining['length'] * 1000
+        original_tool.Placement = FreeCAD.Placement(FreeCAD.Vector(x_coordinate, y_coordinate, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        if machining['coordinates'][0] == 0:
+            tool = original_tool
+        else:
+            central_column_tool = document.addObject("Part::Box", "central_column_tool")
+            central_column_width = dimensions["F"] * 1.001
+            central_column_tool.Length = central_column_width
+            central_column_tool.Width = central_column_width
+            central_column_tool.Height = machining['length'] * 1000
+            central_column_tool.Placement = FreeCAD.Placement(FreeCAD.Vector(-central_column_width / 2, -central_column_width / 2, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            tool = document.addObject("Part::Cut", "machined_piece")
+            tool.Base = original_tool
+            tool.Tool = central_column_tool
+            document.recompute()
+
+        machined_piece = document.addObject("Part::Cut", "machined_piece")
+        machined_piece.Base = piece
+        machined_piece.Tool = tool
+        document.recompute()
+
+        return machined_piece
 
 
 class P(IShaper):
@@ -1288,6 +1516,57 @@ class E(IShaper):
     def get_shape_extras(self, data, piece):
         return piece
 
+    def apply_machining(self, piece, machining, dimensions):
+        document = FreeCAD.ActiveDocument
+        # print(machining)
+
+        original_tool = document.addObject("Part::Box", "tool")
+        original_tool.Length = dimensions["A"]
+        x_coordinate = -dimensions["A"] / 2
+        if machining['coordinates'][0] == 0:
+            original_tool.Width = dimensions["F"]
+            original_tool.Length = dimensions["C"]
+            y_coordinate = -dimensions["F"] / 2
+            x_coordinate = -dimensions["C"] / 2
+            if 'K' in dimensions:
+                original_tool.Length = dimensions["C"] - dimensions['K']
+                x_coordinate += dimensions['K']
+        else:
+            original_tool.Width = dimensions["A"] / 2
+            if machining['coordinates'][0] > 0:
+                y_coordinate = 0
+            if machining['coordinates'][0] < 0:
+                y_coordinate = -dimensions["A"] / 2
+
+        original_tool.Height = machining['length'] * 1000
+        original_tool.Placement = FreeCAD.Placement(FreeCAD.Vector(x_coordinate, y_coordinate, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        if machining['coordinates'][0] == 0:
+            tool = original_tool
+        else:
+            central_column_tool = document.addObject("Part::Box", "central_column_tool")
+            central_column_width = dimensions["F"] * 1.001
+            central_column_length = dimensions["C"] * 1.001
+            if 'K' in dimensions:
+                central_column_length = (dimensions["C"] - dimensions['K'] * 2) * 1.001
+            central_column_tool.Length = central_column_length
+            central_column_tool.Width = central_column_width
+            central_column_tool.Height = machining['length'] * 1000
+            central_column_tool.Placement = FreeCAD.Placement(FreeCAD.Vector(-central_column_length / 2, -central_column_width / 2, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+
+            tool = document.addObject("Part::Cut", "machined_piece")
+            tool.Base = original_tool
+            tool.Tool = central_column_tool
+            document.recompute()
+
+        machined_piece = document.addObject("Part::Cut", "machined_piece")
+        machined_piece.Base = piece
+        machined_piece.Tool = tool
+        document.recompute()
+
+        return machined_piece
+
 
 class Er(E):
     def get_dimensions_and_subtypes(self):
@@ -1598,6 +1877,52 @@ class Ep(E):
 
         return winding_window
 
+    def apply_machining(self, piece, machining, dimensions):
+        document = FreeCAD.ActiveDocument
+        # print(machining)
+
+        original_tool = document.addObject("Part::Box", "tool")
+        original_tool.Length = dimensions["A"]
+        x_coordinate = -dimensions["A"] / 2
+        if machining['coordinates'][0] == 0 and machining['coordinates'][2] == 0:
+            original_tool.Width = dimensions["F"]
+            original_tool.Length = dimensions["F"]
+            x_coordinate = (dimensions["C"] / 2 - dimensions["K"] - dimensions["F"] / 2)
+            y_coordinate = -dimensions["F"] / 2
+        elif machining['coordinates'][0] != 0 and machining['coordinates'][2] == 0:
+            original_tool.Width = dimensions["A"] / 2
+            if machining['coordinates'][0] > 0:
+                y_coordinate = 0
+            if machining['coordinates'][0] < 0:
+                y_coordinate = -dimensions["A"] / 2
+        else:
+            original_tool.Width = dimensions["A"]
+            y_coordinate = -dimensions["A"] / 2
+
+        original_tool.Height = machining['length'] * 1000
+        original_tool.Placement = FreeCAD.Placement(FreeCAD.Vector(x_coordinate, y_coordinate, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        if machining['coordinates'][0] == 0 and machining['coordinates'][2] == 0:
+            tool = original_tool
+        else:
+            central_column_tool = document.addObject("Part::Cylinder", "central_column_tool")
+            central_column_width = dimensions["F"] * 1.001
+            central_column_tool.Radius = central_column_width / 2
+            central_column_tool.Height = machining['length'] * 1000
+            central_column_tool.Placement = FreeCAD.Placement(FreeCAD.Vector((dimensions["C"] / 2 - dimensions["K"]), 0, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            tool = document.addObject("Part::Cut", "machined_piece")
+            tool.Base = original_tool
+            tool.Tool = central_column_tool
+            document.recompute()
+
+        machined_piece = document.addObject("Part::Cut", "machined_piece")
+        machined_piece.Base = piece
+        machined_piece.Tool = tool
+        document.recompute()
+
+        return machined_piece
+
 
 class Epx(E):
     def get_dimensions_and_subtypes(self):
@@ -1676,6 +2001,54 @@ class Epx(E):
         document.recompute()
 
         return winding_window
+
+    def apply_machining(self, piece, machining, dimensions):
+        document = FreeCAD.ActiveDocument
+        # print(machining)
+
+        original_tool = document.addObject("Part::Box", "tool")
+        original_tool.Length = dimensions["A"]
+        x_coordinate = -dimensions["A"] / 2
+        if machining['coordinates'][0] == 0 and machining['coordinates'][2] == 0:
+            original_tool.Width = dimensions["F"]
+            original_tool.Length = dimensions["F"] / 2 + dimensions["K"]
+            x_coordinate = (dimensions["C"] / 2 - (dimensions["F"] / 2 + dimensions["K"]))
+            y_coordinate = -dimensions["F"] / 2
+        elif machining['coordinates'][0] != 0 and machining['coordinates'][2] == 0:
+            original_tool.Width = dimensions["A"] / 2
+            if machining['coordinates'][0] > 0:
+                y_coordinate = 0
+            if machining['coordinates'][0] < 0:
+                y_coordinate = -dimensions["A"] / 2
+        else:
+            original_tool.Width = dimensions["A"]
+            y_coordinate = -dimensions["A"] / 2
+
+        original_tool.Height = machining['length'] * 1000
+        original_tool.Placement = FreeCAD.Placement(FreeCAD.Vector(x_coordinate, y_coordinate, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        if machining['coordinates'][0] == 0 and machining['coordinates'][2] == 0:
+            tool = original_tool
+        else:
+            central_column_tool = document.addObject("Part::Box", "central_column_tool")
+            central_column_length = (dimensions["F"] / 2 + dimensions["K"]) * 1.01
+            central_column_width = dimensions["F"] * 1.01
+            central_column_tool.Length = central_column_length
+            central_column_tool.Width = central_column_width
+            central_column_tool.Height = machining['length'] * 1000
+            central_column_tool.Placement = FreeCAD.Placement(FreeCAD.Vector((dimensions["C"] / 2 * 1.01 - central_column_length), -central_column_width / 2, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            tool = document.addObject("Part::Cut", "machined_piece")
+            tool.Base = original_tool
+            tool.Tool = central_column_tool
+            document.recompute()
+
+        machined_piece = document.addObject("Part::Cut", "machined_piece")
+        machined_piece.Base = piece
+        machined_piece.Tool = tool
+        document.recompute()
+
+        return machined_piece
 
 
 class Efd(E):
@@ -1828,6 +2201,29 @@ class U(E):
         central_hole.Height = dimensions["D"]
         central_hole.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
         return central_hole
+
+    def apply_machining(self, piece, machining, dimensions):
+        document = FreeCAD.ActiveDocument
+        # print(machining)
+
+        tool = document.addObject("Part::Box", "tool")
+        tool.Length = dimensions["A"]
+        tool.Width = dimensions["A"] / 2
+        x_coordinate = -dimensions["A"] / 2
+        if machining['coordinates'][0] == 0:
+            y_coordinate = -dimensions["A"] / 2
+        else:
+            y_coordinate = 0
+
+        tool.Height = machining['length'] * 1000
+        tool.Placement = FreeCAD.Placement(FreeCAD.Vector(x_coordinate, y_coordinate, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        machined_piece = document.addObject("Part::Cut", "machined_piece")
+        machined_piece.Base = piece
+        machined_piece.Tool = tool
+        document.recompute()
+
+        return machined_piece
 
 
 class Ur(IShaper):
@@ -2085,6 +2481,18 @@ class Ur(IShaper):
         svgFile_data += projetion_head
         svgFile_data += TechDraw.viewPartAsSvg(view).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
         svgFile_data += projetion_tail
+        if 'F' not in original_dimensions:
+            original_dimensions['F'] = original_dimensions['C']
+
+        if 'E' not in original_dimensions:
+            original_dimensions['E'] = original_dimensions['A'] - original_dimensions['F'] - original_dimensions['H']
+
+        if 'F' not in dimensions:
+            dimensions['F'] = dimensions['C']
+
+        if 'E' not in dimensions:
+            dimensions['E'] = dimensions['A'] - dimensions['F'] - dimensions['H']
+
         if view.Name == "TopView":
             if "C" in dimensions:
                 svgFile_data += create_dimension(starting_coordinates=[dimensions['A'] / 2, -dimensions['C'] / 2],
@@ -2094,7 +2502,7 @@ class Ur(IShaper):
                                                  label_offset=horizontal_offset)
                 horizontal_offset += increment
 
-            if "G" in dimensions:
+            if "G" in dimensions and dimensions['G'] > 0:
                 svgFile_data += create_dimension(starting_coordinates=[-dimensions['A'] / 2 + dimensions['F'] / 2 - dimensions['G'] / 2, 0],
                                                  ending_coordinates=[-dimensions['A'] / 2 + dimensions['F'] / 2 + dimensions['G'] / 2, 0],
                                                  dimension_type="DistanceX",
@@ -2132,6 +2540,10 @@ class Ur(IShaper):
                 right_column_diameter = dimensions['H']
             else:
                 right_column_diameter = dimensions['C']
+
+            if 'E' not in original_dimensions:
+                original_dimensions['E'] = original_dimensions['A'] - original_dimensions['F'] - original_dimensions['']
+
             svgFile_data += create_dimension(starting_coordinates=[-dimensions['A'] / 2 + left_column_diameter, 0],
                                              ending_coordinates=[dimensions['A'] / 2 - right_column_diameter, 0],
                                              dimension_type="DistanceX",
@@ -2171,6 +2583,345 @@ class Ur(IShaper):
             svgFile.close() 
         return svgFile_data
 
+    def apply_machining(self, piece, machining, dimensions):
+        document = FreeCAD.ActiveDocument
+        # print(machining)
+
+        tool = document.addObject("Part::Box", "tool")
+        tool.Length = dimensions["A"]
+        tool.Width = dimensions["A"] / 2
+        x_coordinate = -dimensions["A"] / 2
+        if machining['coordinates'][0] == 0:
+            y_coordinate = -dimensions["A"] / 2
+        else:
+            y_coordinate = 0
+
+        tool.Height = machining['length'] * 1000
+        tool.Placement = FreeCAD.Placement(FreeCAD.Vector(x_coordinate, y_coordinate, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        machined_piece = document.addObject("Part::Cut", "machined_piece")
+        machined_piece.Base = piece
+        machined_piece.Tool = tool
+        document.recompute()
+
+        return machined_piece
+
+
+class Ut(IShaper):
+    def get_dimensions_and_subtypes(self):
+        return {
+            1: ["A", "B", "C", "D", "E", "F"],
+        }
+
+    def get_shape_extras(self, data, piece):
+        dimensions = data["dimensions"]
+        document = FreeCAD.ActiveDocument
+
+        top_column = document.addObject("Part::Box", "top_column")
+        top_column.Length = dimensions["C"]
+        top_column.Width = dimensions["F"]
+        top_column.Height = dimensions["D"]
+        top_column.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["A"] / 2, (dimensions["B"] - dimensions["D"]) / 2), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+    
+        bottom_column_width = dimensions["A"] - dimensions["E"] - dimensions["F"]
+        bottom_column = document.addObject("Part::Box", "bottom_column")
+        bottom_column.Length = dimensions["C"]
+        bottom_column.Width = bottom_column_width
+        bottom_column.Height = dimensions["D"]
+        bottom_column.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, dimensions["A"] / 2 - bottom_column_width, (dimensions["B"] - dimensions["D"]) / 2), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        columns = document.addObject("Part::MultiFuse", "columns")
+        columns.Shapes = [piece, bottom_column, top_column]
+        document.recompute()
+
+        columns.Placement.move(FreeCAD.Vector(0, 0, dimensions["B"] / 2))
+
+        return columns
+
+    def get_shape_base(self, data, sketch):
+        dimensions = data["dimensions"]
+        c = dimensions["C"] / 2
+        a = dimensions["A"] / 2
+
+        top_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, a, 0), FreeCAD.Vector(c, a, 0)), False)
+        right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, a, 0), FreeCAD.Vector(c, -a, 0)), False)
+        bottom_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, -a, 0), FreeCAD.Vector(-c, -a, 0)), False)
+        left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, -a, 0), FreeCAD.Vector(-c, a, 0)), False)
+        sketch.addConstraint(Sketcher.Constraint('Coincident', top_line, 2, right_line, 1))
+        sketch.addConstraint(Sketcher.Constraint('Coincident', right_line, 2, bottom_line, 1))
+        sketch.addConstraint(Sketcher.Constraint('Coincident', bottom_line, 2, left_line, 1))
+        sketch.addConstraint(Sketcher.Constraint('Coincident', left_line, 2, top_line, 1))
+        sketch.addConstraint(Sketcher.Constraint('DistanceY', bottom_line, 1, -1, 1, a))
+        sketch.addConstraint(Sketcher.Constraint('DistanceY', top_line, 1, -1, 1, -a))
+        sketch.addConstraint(Sketcher.Constraint('DistanceX', left_line, 1, -1, 1, c))
+        sketch.addConstraint(Sketcher.Constraint('DistanceX', right_line, 1, -1, 1, -c))
+        sketch.addConstraint(Sketcher.Constraint('Vertical', right_line))
+        sketch.addConstraint(Sketcher.Constraint('Vertical', left_line))
+        sketch.addConstraint(Sketcher.Constraint('Horizontal', top_line))
+        sketch.addConstraint(Sketcher.Constraint('Horizontal', bottom_line))
+
+    def get_negative_winding_window(self, dimensions):
+        document = FreeCAD.ActiveDocument
+        central_hole = document.addObject("Part::Box", "central_hole")
+        central_hole.Length = dimensions["C"]
+        central_hole.Width = dimensions["A"]
+        central_hole.Height = dimensions["D"]
+        central_hole.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["A"] / 2, (dimensions["B"] - dimensions["D"]) / 2), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+        return central_hole
+
+    def get_top_projection(self, data, piece, margin):
+
+        dimensions = data["dimensions"]
+
+        document = FreeCAD.ActiveDocument
+        page = document.addObject('TechDraw::DrawPage', 'Top Page')
+        template = document.addObject('TechDraw::DrawSVGTemplate', 'Template')
+        page.Template = template
+        document.recompute()
+
+        aux_view = document.addObject('TechDraw::DrawViewPart', 'AuxView')
+        page.addView(aux_view)
+        aux_view.Source = [piece]
+        aux_view.Direction = FreeCAD.Vector(1.00, 0.00, 0.00)
+        aux_view.XDirection = FreeCAD.Vector(0.00, 1.00, 0.00)
+        aux_view.X = margin + dimensions['A'] / 2
+
+        semi_height = dimensions['B'] / 2
+
+        top_view = document.addObject('TechDraw::DrawViewSection', 'TopView')
+        page.addView(top_view)
+        top_view.BaseView = document.getObject('AuxView')
+        top_view.Source = document.getObject('AuxView').Source
+        top_view.ScaleType = 0
+        top_view.SectionDirection = 'Down'
+        top_view.SectionNormal = FreeCAD.Vector(0.000, 0.000, 1.000)
+        top_view.SectionOrigin = FreeCAD.Vector(0, 0.000, semi_height)
+        top_view.SectionSymbol = ''
+        top_view.Label = 'Section  - '
+        top_view.Scale = 1.000000
+        top_view.ScaleType = 0
+        top_view.Rotation = 0
+        top_view.Direction = FreeCAD.Vector(0.00, 0.00, 1.00)
+        top_view.XDirection = FreeCAD.Vector(0.00, 1.00, 0.00)
+        top_view.X = margin + dimensions['A'] / 2
+
+        base_height = data['dimensions']['C'] + margin
+
+        top_view.Y = 1000 - base_height / 2
+
+        top_view.Scale = 1
+        document.recompute()
+        return top_view
+
+    def get_front_projection(self, data, piece, margin):
+
+        dimensions = data["dimensions"]
+
+        document = FreeCAD.ActiveDocument
+        page = document.addObject('TechDraw::DrawPage', 'Top Page')
+        template = document.addObject('TechDraw::DrawSVGTemplate', 'Template')
+        page.Template = template
+        document.recompute()
+
+        front_view = document.addObject('TechDraw::DrawViewPart', 'FrontView')
+        page.addView(front_view)
+        front_view.Source = [piece]
+        front_view.Direction = FreeCAD.Vector(1.00, 0.00, 0.00)
+        front_view.XDirection = FreeCAD.Vector(0.00, 1.00, 0.00)
+        front_view.X = margin + dimensions['A'] / 2
+        front_view.Y = 1000 - margin - dimensions['B'] / 2
+
+        document.recompute()
+
+        return front_view
+
+    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
+        def calculate_total_dimensions():
+            if view.Name == "TopView":
+                base_width = data['dimensions']['A'] + margin
+                base_width += horizontal_offset
+                if 'C' in dimensions:
+                    base_width += increment
+
+                base_height = data['dimensions']['C'] + margin
+
+                base_height += vertical_offset
+                if 'A' in dimensions:
+                    base_height += increment
+                if 'E' in dimensions:
+                    base_height += increment
+                if 'F' in dimensions:
+                    base_height += increment
+
+            if view.Name == "FrontView":
+                base_width = data['dimensions']['A'] + margin
+                base_width += horizontal_offset
+                if 'B' in dimensions:
+                    base_width += increment
+                if 'D' in dimensions:
+                    base_width += increment
+
+                base_height = data['dimensions']['B'] + margin * 2
+
+            return base_width, base_height
+
+        def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
+            dimension_svg = ""
+
+            if dimension_type == "DistanceY":
+                main_line_start = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
+                main_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
+                left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
+                left_aux_line_end = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
+                right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
+                right_aux_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
+
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + ending_coordinates[0] + label_offset - dimension_font_size / 4},{1000 - view.Y.Value + label_alignment})" stroke-linecap="square" stroke-linejoin="bevel">
+                                         <text x="0" y="0" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400" transform="rotate(-90)">{dimension_label}</text>
+                                        </g>\n""".replace("                                    ", "")
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
+                                        </g>\n""".replace("                                     ", "")
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
+                                         <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0] + label_offset},{ending_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M0,0 L6,-15 L-6,-15 L0,0"/>
+                                         </g>
+                                         <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0] + label_offset},{starting_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-6,15 L6,15 L0,0"/>
+                                         </g>
+                                        </g>\n""".replace("                                     ", "")
+            elif dimension_type == "DistanceX":
+                main_line_start = [starting_coordinates[0], starting_coordinates[1] + label_offset]
+                main_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
+                left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
+                left_aux_line_end = [starting_coordinates[0], starting_coordinates[1] + label_offset]
+                right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
+                right_aux_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
+
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + label_alignment},{1000 - view.Y.Value})" stroke-linecap="square" stroke-linejoin="bevel">
+                                         <text x="0" y="{ending_coordinates[1] + label_offset - dimension_font_size / 4}" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400">{dimension_label}</text>
+                                        </g>\n""".replace("                                    ", "")
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
+                                        </g>\n""".replace("                                     ", "")
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
+                                         <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0]},{ending_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-15,-6 L-15,6 L0,0"/>
+                                         </g>
+                                         <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0]},{starting_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M0,0 L15,6 L15,-6 L0,0"/>
+                                         </g>
+                                        </g>\n""".replace("                                     ", "")
+            return dimension_svg
+
+        projection_line_thickness = 4
+        dimension_line_thickness = 1
+        dimension_font_size = 30
+        horizontal_offset = 75
+        vertical_offset = 75
+        increment = 50
+        dimensions = data["dimensions"]
+        shape_semi_height = dimensions['C'] / 2
+        base_width, base_height = calculate_total_dimensions()
+        head = f"""<svg xmlns:dc="http://purl.org/dc/elements/1.1/" baseProfile="tiny" xmlns:svg="http://www.w3.org/2000/svg" version="1.2" width="100%" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {base_width} {base_height}" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" height="100%" xmlns:freecad="http://www.freecadweb.org/wiki/index.php?title=Svg_Namespace" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+                     <title>FreeCAD SVG Export</title>
+                     <desc>Drawing page: {view.Name} exported from FreeCAD document: {project_name}</desc>
+                     <defs/>
+                     <g id="{view.Name}" inkscape:label="TechDraw" inkscape:groupmode="layer">
+                      <g id="DrawingContent" fill="none" stroke="black" stroke-width="1" fill-rule="evenodd" stroke-linecap="square" stroke-linejoin="bevel">""".replace("                    ", "")
+        projetion_head = f"""    <g fill-opacity="1" font-size="29.1042" font-style="normal" fill="#ffffff" font-family="MS Shell Dlg 2" stroke="none" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})">\n"""
+        projetion_tail = """   </g>\n"""
+        tail = """</g>
+                 </g>
+                </svg>
+                """.replace("                ", "")
+        svgFile_data = ""
+        svgFile_data += head
+        svgFile_data += projetion_head
+        svgFile_data += TechDraw.viewPartAsSvg(view).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+        svgFile_data += projetion_tail
+        if view.Name == "TopView":
+            if "C" in dimensions:
+                svgFile_data += create_dimension(starting_coordinates=[dimensions['A'] / 2, -dimensions['C'] / 2],
+                                                 ending_coordinates=[dimensions['A'] / 2, dimensions['C'] / 2],
+                                                 dimension_type="DistanceY",
+                                                 dimension_label=f"C: {round(original_dimensions['C'], 2)} mm",
+                                                 label_offset=horizontal_offset)
+                horizontal_offset += increment
+
+            if "F" in dimensions:
+                svgFile_data += create_dimension(starting_coordinates=[-dimensions['A'] / 2, 0],
+                                                 ending_coordinates=[-dimensions['A'] / 2 + dimensions['F'], 0],
+                                                 dimension_type="DistanceX",
+                                                 dimension_label=f"F: {round(original_dimensions['F'], 2)} mm",
+                                                 label_offset=vertical_offset + shape_semi_height,
+                                                 label_alignment=-dimensions['A'] / 2 + dimensions['F'] / 2)
+
+            left_column_diameter = dimensions['F']
+            right_column_diameter = dimensions['A'] - dimensions['E'] - dimensions['F']
+
+            svgFile_data += create_dimension(starting_coordinates=[-dimensions['A'] / 2 + left_column_diameter, 0],
+                                             ending_coordinates=[dimensions['A'] / 2 - right_column_diameter, 0],
+                                             dimension_type="DistanceX",
+                                             dimension_label=f"E: {round(original_dimensions['E'], 2)} mm",
+                                             label_offset=vertical_offset + shape_semi_height,
+                                             label_alignment=-dimensions['A'] / 2 + left_column_diameter + (dimensions['A'] - left_column_diameter - right_column_diameter) / 2)
+            vertical_offset += increment
+            svgFile_data += create_dimension(starting_coordinates=[-dimensions['A'] / 2, 0],
+                                             ending_coordinates=[dimensions['A'] / 2, 0],
+                                             dimension_type="DistanceX",
+                                             dimension_label=f"A: {round(original_dimensions['A'], 2)} mm",
+                                             label_offset=vertical_offset + shape_semi_height)
+            vertical_offset += increment
+        else:
+            if 'H' in dimensions:
+                starting_point_for_d = dimensions['H'] / 2
+            else:
+                starting_point_for_d = dimensions['E'] / 2
+            svgFile_data += create_dimension(starting_coordinates=[starting_point_for_d, -dimensions['D']/ 2],
+                                             ending_coordinates=[starting_point_for_d, dimensions['D'] / 2],
+                                             dimension_type="DistanceY",
+                                             dimension_label=f"D: {round(original_dimensions['D'], 2)} mm",
+                                             label_offset=horizontal_offset + (dimensions['A'] / 2 - starting_point_for_d),
+                                             label_alignment=-dimensions['B'] / 2 + dimensions['D'] / 2)
+            horizontal_offset += increment
+            svgFile_data += create_dimension(starting_coordinates=[dimensions['A'] / 2, -dimensions['B'] / 2],
+                                             ending_coordinates=[dimensions['A'] / 2, dimensions['B'] / 2],
+                                             dimension_type="DistanceY",
+                                             dimension_label=f"B: {round(original_dimensions['B'], 2)} mm",
+                                             label_offset=horizontal_offset)
+
+        svgFile_data += tail
+        
+        if save_files:
+            svgFile = open(f"{self.output_path}/{project_name}_{view.Name}.svg", "w")
+            svgFile.write(svgFile_data)
+            svgFile.close() 
+        return svgFile_data
+
+    def apply_machining(self, piece, machining, dimensions):
+        document = FreeCAD.ActiveDocument
+        # print(machining)
+
+        tool = document.addObject("Part::Box", "tool")
+        tool.Length = dimensions["A"]
+        tool.Width = dimensions["A"] / 2
+        x_coordinate = -dimensions["A"] / 2
+        if machining['coordinates'][0] == 0:
+            y_coordinate = -dimensions["A"] / 2
+        else:
+            y_coordinate = 0
+
+        tool.Height = machining['length'] * 1000
+        tool.Placement = FreeCAD.Placement(FreeCAD.Vector(x_coordinate, y_coordinate, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        machined_piece = document.addObject("Part::Cut", "machined_piece")
+        machined_piece.Base = piece
+        machined_piece.Tool = tool
+        document.recompute()
+
+        return machined_piece
+
 
 class T(IShaper):
     def get_negative_winding_window(self, dimensions):
@@ -2185,15 +2936,73 @@ class T(IShaper):
 
 if __name__ == '__main__':  # pragma: no cover
 
-    with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
-        for ndjson_line in f.readlines():
-            data = json.loads(ndjson_line)
-            # if data["name"] == "EL 11/2.0":
-            # if data["family"] in ['pm']:
-            if data["family"] not in ['ui']:
-                core = Builder().factory(data)
-                core.get_piece_technical_drawing(data, {
-                    "projection_color": "#539796",
-                    "dimension_color": "#539796"
-                })
-                # break
+    # with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+    #     for ndjson_line in f.readlines():
+    #         data = json.loads(ndjson_line)
+    #         if data["name"] == "PQ 40/40":
+    #         # if data["family"] in ['pm']:
+    #         # if data["family"] not in ['ui']:
+    #             core = Builder().factory(data)
+    #             core.get_core(data, None)
+    #             # break
+
+    geometricalDescription = [{'coordinates': [0.0, 0.0, -0.0],
+                               'dimensions': None,
+                               'machining': [{'coordinates': [0.017301,
+                                                              0.002,
+                                                              0.0],
+                                              'length': 0.004},
+                                             {'coordinates': [0.0, 0.00025, 0.0],
+                                              'length': 0.0005},
+                                             {'coordinates': [0.0, 0.00644, 0.0],
+                                              'length': 0.0023},
+                                             {'coordinates': [0.0, 0.01057, 0.0],
+                                              'length': 0.004200000000000001}],
+                               'material': '3C97',
+                               'rotation': [3.141592653589793, 0.0, 0.0],
+                               'shape': {'aliases': [],
+                                         'dimensions': {'A': 0.0391,
+                                                        'B': 0.0198,
+                                                        'C': 0.0125,
+                                                        'D': 0.0146,
+                                                        'E': 0.030100000000000002,
+                                                        'F': 0.0125,
+                                                        'G': 0.0,
+                                                        'H': 0.0},
+                                         'family': 'etd',
+                                         'familySubtype': '1',
+                                         'magneticCircuit': None,
+                                         'name': 'Custom',
+                                         'type': 'custom'},
+                               'type': 'half set'},
+                              {'coordinates': [0.0, -0.0, -0.0],
+                               'dimensions': None,
+                               'machining': [{'coordinates': [0.0, -0.00786, 0.0],
+                                              'length': 0.004},
+                                             {'coordinates': [0.017301,
+                                                              -0.002,
+                                                              0.0],
+                                              'length': 0.004},
+                                             {'coordinates': [0.0, -0.00262, 0.0],
+                                              'length': 0.0019},
+                                             {'coordinates': [0.0, -0.00025, 0.0],
+                                              'length': 0.0005}],
+                               'material': '3C97',
+                               'rotation': [0, 0.0, 0.0],
+                               'shape': {'aliases': [],
+                                         'dimensions': {'A': 0.0391,
+                                                        'B': 0.0198,
+                                                        'C': 0.0125,
+                                                        'D': 0.0146,
+                                                        'E': 0.030100000000000002,
+                                                        'F': 0.0125,
+                                                        'G': 0.0,
+                                                        'H': 0.0},
+                                         'family': 'etd',
+                                         'familySubtype': '1',
+                                         'magneticCircuit': None,
+                                         'name': 'Custom',
+                                         'type': 'custom'},
+                               'type': 'half set'}]
+
+    core = Builder().get_core("Ea", geometricalDescription)
