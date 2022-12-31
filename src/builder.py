@@ -565,9 +565,9 @@ class IPiece(metaclass=ABCMeta):
         top_view.XDirection = FreeCAD.Vector(0.00, -1.00, 0.00)
         top_view.X = margin + dimensions['A'] / 2
 
-        if data['family'] == 'p':
+        if data['family'] in ['p', 'rm']:
             base_height = data['dimensions']['A'] + margin
-        elif data['family'] in ['rm', 'pm']:
+        elif data['family'] in ['pm']:
             base_height = data['dimensions']['E'] + margin
         else:
             base_height = data['dimensions']['C'] + margin
