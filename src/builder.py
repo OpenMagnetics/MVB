@@ -795,15 +795,32 @@ class IPiece(metaclass=ABCMeta):
 
     def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
         def calculate_total_dimensions():
+            base_width = data['dimensions']['A'] + margin
+            base_width += horizontal_offset
+            top_base_width = base_width
+            if 'C' in dimensions:
+                top_base_width += increment
+            if 'L' in dimensions:
+                top_base_width += increment
+            if 'K' in dimensions:
+                top_base_width += increment
+            front_base_width = base_width
+            if 'B' in dimensions:
+                front_base_width += increment
+            if 'D' in dimensions:
+                front_base_width += increment
+
+            base_width = max(top_base_width, front_base_width)
+
             if view.Name == "TopView":
-                base_width = data['dimensions']['A'] + margin
-                base_width += horizontal_offset
-                if 'C' in dimensions:
-                    base_width += increment
-                if 'L' in dimensions:
-                    base_width += increment
-                if 'K' in dimensions:
-                    base_width += increment
+                # base_width = data['dimensions']['A'] + margin
+                # base_width += horizontal_offset
+                # if 'C' in dimensions:
+                #     base_width += increment
+                # if 'L' in dimensions:
+                #     base_width += increment
+                # if 'K' in dimensions:
+                #     base_width += increment
 
                 if data['family'] == 'p':
                     base_height = data['dimensions']['A'] + margin
@@ -826,12 +843,12 @@ class IPiece(metaclass=ABCMeta):
                     base_height += increment
 
             if view.Name == "FrontView":
-                base_width = data['dimensions']['A'] + margin
-                base_width += horizontal_offset
-                if 'B' in dimensions:
-                    base_width += increment
-                if 'D' in dimensions:
-                    base_width += increment
+                # base_width = data['dimensions']['A'] + margin
+                # base_width += horizontal_offset
+                # if 'B' in dimensions:
+                #     base_width += increment
+                # if 'D' in dimensions:
+                #     base_width += increment
 
                 base_height = data['dimensions']['B'] + margin * 2
 
