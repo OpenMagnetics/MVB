@@ -942,6 +942,7 @@ class IPiece(metaclass=ABCMeta):
                                                  dimension_label=f"L: {round(dimensions['L'] / scale, 2)} mm",
                                                  label_offset=horizontal_offset + dimensions['A'] / 2 - dimensions['J'] / 2)
                 horizontal_offset += increment
+            k = 0
             if "K" in dimensions and dimensions["K"] > 0:
                 if data['family'] == 'efd':
                     height_of_dimension = dimensions['C'] / 2
