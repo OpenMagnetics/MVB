@@ -2510,7 +2510,7 @@ class Ur(IPiece):
     def get_dimensions_and_subtypes(self):
         return {
             1: ["A", "B", "C", "D", "H"],
-            2: ["A", "B", "C", "D"],
+            2: ["A", "B", "C", "D", "H"],
             3: ["A", "B", "C", "D", "F", "H"],
             4: ["A", "B", "C", "D", "F", "G", "H"]
         }
