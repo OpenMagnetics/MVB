@@ -31,10 +31,10 @@ def flatten_dimensions(data):
     dimensions = data["dimensions"]
     for k, v in dimensions.items():
         if isinstance(v, dict):
-            if "nominal" not in v:
-                if "maximum" not in v:
+            if "nominal" not in v or v["nominal"] is None:
+                if "maximum" not in v or v["maximum"] is None:
                     v["nominal"] = v["minimum"]
-                elif "minimum" not in v:
+                elif "minimum" not in v or v["minimum"] is None:
                     v["nominal"] = v["maximum"]
                 else:
                     v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
@@ -660,14 +660,16 @@ class IPiece(metaclass=ABCMeta):
             return None, None
 
     def get_piece(self, data, name="Piece", save_files=False, export_files=True):
+        close_file_after_finishing = False
+        if FreeCAD.ActiveDocument is None:
+            close_file_after_finishing = True
+
         try:
             project_name = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
 
             data["dimensions"] = flatten_dimensions(data)
 
-            close_file_after_finishing = False
             if FreeCAD.ActiveDocument is None:
-                close_file_after_finishing = True
                 FreeCAD.newDocument(project_name)
             document = FreeCAD.ActiveDocument
 
@@ -723,7 +725,10 @@ class IPiece(metaclass=ABCMeta):
                 FreeCAD.closeDocument(project_name)
             except NameError:
                 pass
-            return None, None
+            if close_file_after_finishing:
+                return None, None
+            else:
+                return None
 
     def get_piece_technical_drawing(self, data, colors=None, save_files=False):
         try:
@@ -2204,25 +2209,46 @@ class Epx(E):
     def get_negative_winding_window(self, dimensions):
         document = FreeCAD.ActiveDocument
 
-        cylinder_left = document.addObject("Part::Cylinder", "cylinder_left")
-        cylinder_left.Height = dimensions["D"]
-        cylinder_left.Radius = dimensions["F"] / 2
-        cylinder_left.Angle = 180
-        cylinder_left.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], 0, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(90, 0, 0))
-        document.recompute()
+        if dimensions["K"] >= dimensions["F"]:
+            cylinder_left = document.addObject("Part::Cylinder", "cylinder_left")
+            cylinder_left.Height = dimensions["D"]
+            cylinder_left.Radius = dimensions["F"] / 2
+            cylinder_left.Angle = 180
+            cylinder_left.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], 0, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(90, 0, 0))
+            document.recompute()
 
-        central_column_cube = document.addObject("Part::Box", "central_column_cube")
-        central_column_cube.Length = dimensions["K"] - dimensions["F"] / 2
-        central_column_cube.Width = dimensions["F"]
-        central_column_cube.Height = dimensions["D"]
-        central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["F"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+            central_column_cube = document.addObject("Part::Box", "central_column_cube")
+            central_column_cube.Length = dimensions["K"] - dimensions["F"] / 2
+            central_column_cube.Width = dimensions["F"]
+            central_column_cube.Height = dimensions["D"]
+            central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["F"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
-        cylinder_right = document.addObject("Part::Cylinder", "cylinder_right")
-        cylinder_right.Height = dimensions["D"]
-        cylinder_right.Radius = dimensions["F"] / 2
-        cylinder_right.Angle = 180
-        cylinder_right.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["F"] / 2, 0, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(-90, 0, 0))
-        document.recompute()
+            cylinder_right = document.addObject("Part::Cylinder", "cylinder_right")
+            cylinder_right.Height = dimensions["D"]
+            cylinder_right.Radius = dimensions["F"] / 2
+            cylinder_right.Angle = 180
+            cylinder_right.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["F"] / 2, 0, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(-90, 0, 0))
+            document.recompute()
+        else:
+            cylinder_left = document.addObject("Part::Cylinder", "cylinder_left")
+            cylinder_left.Height = dimensions["D"]
+            cylinder_left.Radius = dimensions["K"]
+            cylinder_left.Angle = 180
+            cylinder_left.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -(dimensions["F"] / 2 - dimensions["K"]), dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(180, 0, 0))
+            document.recompute()
+
+            central_column_cube = document.addObject("Part::Box", "central_column_cube")
+            central_column_cube.Length = dimensions["K"] * 2
+            central_column_cube.Width = dimensions["F"] - dimensions["K"] * 2
+            central_column_cube.Height = dimensions["D"]
+            central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"] * 2, -(dimensions["F"] / 2 - dimensions["K"]), dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            cylinder_right = document.addObject("Part::Cylinder", "cylinder_right")
+            cylinder_right.Height = dimensions["D"]
+            cylinder_right.Radius = dimensions["K"]
+            cylinder_right.Angle = 180 
+            cylinder_right.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], (dimensions["F"] / 2 - dimensions["K"]), dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(0, 0, 0))
+            document.recompute()
 
         central_column = document.addObject("Part::MultiFuse", "central_column")
         central_column.Shapes = [cylinder_left, central_column_cube, cylinder_right]
@@ -2248,10 +2274,16 @@ class Epx(E):
         lateral_bottom_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
         lateral_right_cube = document.addObject("Part::Box", "lateral_right_cube")
-        lateral_right_cube.Length = dimensions["C"] / 2
+        if dimensions["K"] >= dimensions["F"]:
+            lateral_right_cube.Length = dimensions["C"] / 2
+        else:
+            lateral_right_cube.Length = dimensions["K"]
         lateral_right_cube.Width = dimensions["E"]
         lateral_right_cube.Height = dimensions["D"]
-        lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["F"] / 2, -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+        if dimensions["K"] >= dimensions["F"]:
+            lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["F"] / 2, -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+        else:
+            lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
         shapes = [winding_window_cylinder_left, lateral_top_cube, lateral_bottom_cube, lateral_right_cube]
         if "G" in dimensions and dimensions["G"] > 0:
@@ -3224,73 +3256,12 @@ class T(IPiece):
 
 if __name__ == '__main__':  # pragma: no cover
 
-    # with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
-    #     for ndjson_line in f.readlines():
-    #         data = json.loads(ndjson_line)
-    #         if data["name"] == "PQ 40/40":
-    #         # if data["family"] in ['pm']:
-    #         # if data["family"] not in ['ui']:
-    #             core = Builder().factory(data)
-    #             core.get_core(data, None)
-    #             # break
-
-    geometricalDescription = [{'coordinates': [0.0, 0.0, -0.0],
-                               'dimensions': None,
-                               'machining': [{'coordinates': [0.017301,
-                                                              0.002,
-                                                              0.0],
-                                              'length': 0.004},
-                                             {'coordinates': [0.0, 0.00025, 0.0],
-                                              'length': 0.0005},
-                                             {'coordinates': [0.0, 0.00644, 0.0],
-                                              'length': 0.0023},
-                                             {'coordinates': [0.0, 0.01057, 0.0],
-                                              'length': 0.004200000000000001}],
-                               'material': '3C97',
-                               'rotation': [3.141592653589793, 0.0, 0.0],
-                               'shape': {'aliases': [],
-                                         'dimensions': {'A': 0.0391,
-                                                        'B': 0.0198,
-                                                        'C': 0.0125,
-                                                        'D': 0.0146,
-                                                        'E': 0.030100000000000002,
-                                                        'F': 0.0125,
-                                                        'G': 0.0,
-                                                        'H': 0.0},
-                                         'family': 'etd',
-                                         'familySubtype': '1',
-                                         'magneticCircuit': None,
-                                         'name': 'Custom',
-                                         'type': 'custom'},
-                               'type': 'half set'},
-                              {'coordinates': [0.0, -0.0, -0.0],
-                               'dimensions': None,
-                               'machining': [{'coordinates': [0.0, -0.00786, 0.0],
-                                              'length': 0.004},
-                                             {'coordinates': [0.017301,
-                                                              -0.002,
-                                                              0.0],
-                                              'length': 0.004},
-                                             {'coordinates': [0.0, -0.00262, 0.0],
-                                              'length': 0.0019},
-                                             {'coordinates': [0.0, -0.00025, 0.0],
-                                              'length': 0.0005}],
-                               'material': '3C97',
-                               'rotation': [0, 0.0, 0.0],
-                               'shape': {'aliases': [],
-                                         'dimensions': {'A': 0.0391,
-                                                        'B': 0.0198,
-                                                        'C': 0.0125,
-                                                        'D': 0.0146,
-                                                        'E': 0.030100000000000002,
-                                                        'F': 0.0125,
-                                                        'G': 0.0,
-                                                        'H': 0.0},
-                                         'family': 'etd',
-                                         'familySubtype': '1',
-                                         'magneticCircuit': None,
-                                         'name': 'Custom',
-                                         'type': 'custom'},
-                               'type': 'half set'}]
-
-    core = Builder().get_core_gapping_technical_drawing("Ea", geometricalDescription)
+    with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        for ndjson_line in f.readlines():
+            data = json.loads(ndjson_line)
+            if data["name"] == "PQ 40/40":
+            # if data["family"] in ['pm']:
+            # if data["family"] not in ['ui']:
+                core = Builder().factory(data)
+                core.get_core(data, None)
+                # break
