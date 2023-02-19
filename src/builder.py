@@ -779,20 +779,32 @@ class IPiece(metaclass=ABCMeta):
 
             document.recompute()
 
+            error_in_piece = False
+            for obj in FreeCAD.ActiveDocument.Objects:
+                if not obj.isValid():
+                    error_in_piece = True
+                    print(f"Error in part: {obj.Name}")
+                    break
+
             pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
 
             margin = 35
 
-            top_view = self.get_top_projection(data, piece, margin)
-            front_view = self.get_front_projection(data, piece, margin)
+            if not error_in_piece:
+                top_view = self.get_top_projection(data, piece, margin)
+                front_view = self.get_front_projection(data, piece, margin)
             if save_files:
                 document.saveAs(f"{self.output_path}/{project_name}.FCStd")
-            top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors, save_files)
-            front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors, save_files)
+            if not error_in_piece:
+                top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors, save_files)
+                front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors, save_files)
 
             FreeCAD.closeDocument(project_name)
 
-            return {"top_view": top_view_file, "front_view": front_view_file}
+            if not error_in_piece:
+                return {"top_view": top_view_file, "front_view": front_view_file}
+            else:
+                return {"top_view": None, "front_view": None}
         except Exception as e:  # noqa: E722
             print(e)
             FreeCAD.closeDocument(project_name)
@@ -2209,7 +2221,7 @@ class Epx(E):
     def get_negative_winding_window(self, dimensions):
         document = FreeCAD.ActiveDocument
 
-        if dimensions["K"] >= dimensions["F"]:
+        if dimensions["K"] >= dimensions["F"] / 2:
             cylinder_left = document.addObject("Part::Cylinder", "cylinder_left")
             cylinder_left.Height = dimensions["D"]
             cylinder_left.Radius = dimensions["F"] / 2
@@ -2217,11 +2229,12 @@ class Epx(E):
             cylinder_left.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], 0, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(90, 0, 0))
             document.recompute()
 
-            central_column_cube = document.addObject("Part::Box", "central_column_cube")
-            central_column_cube.Length = dimensions["K"] - dimensions["F"] / 2
-            central_column_cube.Width = dimensions["F"]
-            central_column_cube.Height = dimensions["D"]
-            central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["F"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+            if dimensions["K"] != dimensions["F"] / 2:
+                central_column_cube = document.addObject("Part::Box", "central_column_cube")
+                central_column_cube.Length = dimensions["K"] - dimensions["F"] / 2
+                central_column_cube.Width = dimensions["F"]
+                central_column_cube.Height = dimensions["D"]
+                central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["F"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
             cylinder_right = document.addObject("Part::Cylinder", "cylinder_right")
             cylinder_right.Height = dimensions["D"]
@@ -2242,6 +2255,7 @@ class Epx(E):
             central_column_cube.Width = dimensions["F"] - dimensions["K"] * 2
             central_column_cube.Height = dimensions["D"]
             central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"] * 2, -(dimensions["F"] / 2 - dimensions["K"]), dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+            document.recompute()
 
             cylinder_right = document.addObject("Part::Cylinder", "cylinder_right")
             cylinder_right.Height = dimensions["D"]
@@ -2251,7 +2265,10 @@ class Epx(E):
             document.recompute()
 
         central_column = document.addObject("Part::MultiFuse", "central_column")
-        central_column.Shapes = [cylinder_left, central_column_cube, cylinder_right]
+        if dimensions["K"] != dimensions["F"] / 2:
+            central_column.Shapes = [cylinder_left, central_column_cube, cylinder_right]
+        else:
+            central_column.Shapes = [cylinder_left, cylinder_right]
 
         document.recompute()
 
@@ -2274,16 +2291,13 @@ class Epx(E):
         lateral_bottom_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
         lateral_right_cube = document.addObject("Part::Box", "lateral_right_cube")
-        if dimensions["K"] >= dimensions["F"]:
+        if dimensions["K"] >= dimensions["F"] / 2:
             lateral_right_cube.Length = dimensions["C"] / 2
         else:
             lateral_right_cube.Length = dimensions["K"]
         lateral_right_cube.Width = dimensions["E"]
         lateral_right_cube.Height = dimensions["D"]
-        if dimensions["K"] >= dimensions["F"]:
-            lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["F"] / 2, -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
-        else:
-            lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+        lateral_right_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(dimensions["C"] / 2 - dimensions["K"], -dimensions["E"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
         shapes = [winding_window_cylinder_left, lateral_top_cube, lateral_bottom_cube, lateral_right_cube]
         if "G" in dimensions and dimensions["G"] > 0:

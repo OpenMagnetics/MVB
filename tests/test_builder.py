@@ -492,23 +492,31 @@ class Tests(unittest.TestCase):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    # unittest.main()
+    unittest.main()
 
-    data = {'aliases': [],
-             'dimensions': {'A': {'nominal': 0.01475},
-                            'B': {'nominal': 0.0067},
-                            'C': {'nominal': 0.0096},
-                            'D': {'nominal': 0.005},
-                            'E': {'nominal': 0.01272},
-                            'F': {'nominal': 0.0057},
-                            'K': {'nominal': 0.00235}},
-             'family': 'epx',
-             'magneticCircuit': 'open',
-             'name': 'custom EPX',
-             'type': 'standard'}
-    core = builder.Builder().factory(data)
-    import pprint
-    pprint.pprint(data)
-    core.get_piece(data, save_files=True, export_files=True)
-    filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-    print(filename)
+
+
+    # data = {'aliases': [],
+    #         'dimensions': {'A': 0.0094,
+    #                        'B': 0.0046,
+    #                        'C': 0.0088,
+    #                        'D': 0.0035,
+    #                        'E': 0.0072,
+    #                        'F': 0.003,
+    #                        'G': 0.0,
+    #                        'H': 0.0,
+    #                        'K': 0.0015},
+    #         'family': 'epx',
+    #         'familySubtype': '1',
+    #         'magneticCircuit': None,
+    #         'name': 'Custom',
+    #         'type': 'custom'}
+    # core = builder.Builder().factory(data)
+    # import pprint
+    # pprint.pprint(data)
+    # print("ea")
+    # ea = core.get_piece_technical_drawing(data, save_files=True)
+    # print("ea2")
+    # filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+    # # print(ea)
+    # # print(filename)
