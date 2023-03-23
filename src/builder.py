@@ -1,3 +1,4 @@
+import contextlib
 import sys
 import math
 import os
@@ -40,12 +41,7 @@ def flatten_dimensions(data):
                     v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
         else:
             dimensions[k] = {"nominal": v}
-    dim = {}
-    for k, v in dimensions.items():
-        if k != 'alpha':
-            dim[k] = v["nominal"] * 1000
-
-    return dim
+    return {k: v["nominal"] * 1000 for k, v in dimensions.items() if k != 'alpha'}
 
 
 class Builder:
@@ -83,10 +79,12 @@ class Builder:
         return self.shapers[family]
 
     def get_families(self):
-        families = {}
-        for shaper in self.shapers:
-            families[shaper.name.lower().replace("_", " ")] = self.factory({'family': shaper.name}).get_dimensions_and_subtypes()
-        return families
+        return {
+            shaper.name.lower()
+            .replace("_", " "): self.factory({'family': shaper.name})
+            .get_dimensions_and_subtypes()
+            for shaper in self.shapers
+        }
 
     def get_spacer(self, geometrical_data):
         document = FreeCAD.ActiveDocument
@@ -174,12 +172,10 @@ class Builder:
                 return pieces_to_export
 
         except:  # noqa: E722
-            try:
+            with contextlib.suppress(NameError):
                 document = FreeCAD.ActiveDocument
                 document.saveAs(f"{output_path}/error.FCStd")
                 FreeCAD.closeDocument(project_name)
-            except NameError:
-                pass
             return None, None
 
     def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../output/', save_files=True, export_files=True):
@@ -228,10 +224,10 @@ class Builder:
                         projection_depth = dimensions['C'] / 2 - dimensions['K']
                     else:
                         projection_depth = 0
-            
+
                     if piece['shape']['family'] in ['u', 'ur']:
                         projection_rotation = 0
-            
+
             projection_depth *= scale
 
             front_view = self.get_front_projection(pieces, margin, scale, base_height, base_width, projection_depth, projection_rotation)
@@ -246,10 +242,8 @@ class Builder:
 
             front_view_file = self.add_dimensions_and_export_view(core_data, scale, base_height, base_width, front_view, project_name, margin, colors, save_files)
             if save_files:
-                svgFile = open(f"{output_path}/{project_name}.svg", "w")
-                svgFile.write(front_view_file) 
-                svgFile.close() 
-
+                with open(f"{output_path}/{project_name}.svg", "w") as svgFile:
+                    svgFile.write(front_view_file)
             if close_file_after_finishing:
                 FreeCAD.closeDocument(project_name)
 
@@ -352,9 +346,14 @@ class Builder:
 
         grouped_gaps_per_column = {}
         for gap in core_data['functionalDescription']['gapping']:
-            if tuple([gap['coordinates'][0], gap['coordinates'][2]]) not in grouped_gaps_per_column:
-                grouped_gaps_per_column[tuple([gap['coordinates'][0], gap['coordinates'][2]])] = []
-            grouped_gaps_per_column[tuple([gap['coordinates'][0], gap['coordinates'][2]])].append(gap)
+            if (
+                gap['coordinates'][0],
+                gap['coordinates'][2],
+            ) not in grouped_gaps_per_column:
+                grouped_gaps_per_column[gap['coordinates'][0], gap['coordinates'][2]] = []
+            grouped_gaps_per_column[
+                gap['coordinates'][0], gap['coordinates'][2]
+            ].append(gap)
 
         ordered_gaps_per_column = {}
         for key, value in grouped_gaps_per_column.items():
@@ -376,7 +375,7 @@ class Builder:
                                                      dimension_label=dimension_label,
                                                      label_offset=min(base_width / 2, gap['sectionDimensions'][0] / 2 * scale * 1000 + horizontal_offset_gaps))
 
-                if gap['type'] == "subtractive" or gap['type'] == "residual":
+                if gap['type'] in ["subtractive", "residual"]:
                     if gap['length'] < 0.0001:
                         dimension_label = f"{round(gap['length'] * 1000000, 2)} μm"
                     else:
@@ -504,11 +503,11 @@ class IPiece(metaclass=ABCMeta):
     def edges_in_boundbox(part, xmin, ymin, zmin, xmax, ymax, zmax):
         bb = FreeCAD.BoundBox(xmin, ymin, zmin, xmax, ymax, zmax)
 
-        vertexes = []
-        for i, edge in enumerate(part.Shape.Edges):
-            if bb.isInside(edge.BoundBox):
-                vertexes.append(i)
-        return vertexes
+        return [
+            i
+            for i, edge in enumerate(part.Shape.Edges)
+            if bb.isInside(edge.BoundBox)
+        ]
 
     @staticmethod
     def create_sketch():
@@ -649,21 +648,17 @@ class IPiece(metaclass=ABCMeta):
             if save_files:
                 document.saveAs(f"{self.output_path}/{project_name}.FCStd")
 
-            if close_file_after_finishing:
-                FreeCAD.closeDocument(project_name)
-                return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
-            else:
+            if not close_file_after_finishing:
                 return plate
 
+            FreeCAD.closeDocument(project_name)
+            return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
         except:  # noqa: E722
             FreeCAD.closeDocument(project_name)
             return None, None
 
     def get_piece(self, data, name="Piece", save_files=False, export_files=True):
-        close_file_after_finishing = False
-        if FreeCAD.ActiveDocument is None:
-            close_file_after_finishing = True
-
+        close_file_after_finishing = FreeCAD.ActiveDocument is None
         try:
             project_name = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
 
@@ -686,7 +681,7 @@ class IPiece(metaclass=ABCMeta):
                 part_name=part_name,
                 height=data["dimensions"]["B"]
             )
-            
+
             document.recompute()
 
             negative_winding_window = self.get_negative_winding_window(data["dimensions"])
@@ -715,100 +710,100 @@ class IPiece(metaclass=ABCMeta):
             if save_files:
                 document.saveAs(f"{self.output_path}/{project_name}.FCStd")
 
-            if close_file_after_finishing:
-                FreeCAD.closeDocument(project_name)
-                return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
-            else:
+            if not close_file_after_finishing:
                 return piece
+            FreeCAD.closeDocument(project_name)
+            return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
         except:  # noqa: E722
-            try:
+            with contextlib.suppress(NameError):
                 FreeCAD.closeDocument(project_name)
-            except NameError:
-                pass
-            if close_file_after_finishing:
-                return None, None
-            else:
-                return None
+            return (None, None) if close_file_after_finishing else None
 
     def get_piece_technical_drawing(self, data, colors=None, save_files=False):
         try:
-            project_name = f"{data['name']}_piece_scaled".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-            if colors is None:
-                colors = {
-                    "projection_color": "#000000",
-                    "dimension_color": "#000000"
-                }
-
-            original_dimensions = flatten_dimensions(data)
-            scale = 1000 / (1.25 * original_dimensions['A'])
-            data["dimensions"] = {}
-            for k, v in original_dimensions.items():
-                data["dimensions"][k] = v * scale
-
-            if FreeCAD.ActiveDocument is None:
-                FreeCAD.newDocument(project_name)
-            document = FreeCAD.getDocument(project_name)
-
-            sketch = self.create_sketch()
-            self.get_shape_base(data, sketch)
-
-            document = FreeCAD.ActiveDocument
-            document.recompute()
-
-            part_name = "piece"
-
-            base = self.extrude_sketch(
-                sketch=sketch,
-                part_name=part_name,
-                height=data["dimensions"]["B"]
+            return self.try_get_piece_technical_drawing(
+                data, colors, save_files
             )
-            
-            document.recompute()
-
-            negative_winding_window = self.get_negative_winding_window(data["dimensions"])
-
-            piece_cut = document.addObject("Part::Cut", "Cut")
-            piece_cut.Base = base
-            piece_cut.Tool = negative_winding_window
-            document.recompute()
-
-            piece_with_extra = self.get_shape_extras(data, piece_cut)
-
-            piece = document.addObject('Part::Refine', 'Refine')
-            piece.Source = piece_with_extra
-
-            document.recompute()
-
-            error_in_piece = False
-            for obj in FreeCAD.ActiveDocument.Objects:
-                if not obj.isValid():
-                    error_in_piece = True
-                    print(f"Error in part: {obj.Name}")
-                    break
-
-            pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
-
-            margin = 35
-
-            if not error_in_piece:
-                top_view = self.get_top_projection(data, piece, margin)
-                front_view = self.get_front_projection(data, piece, margin)
-            if save_files:
-                document.saveAs(f"{self.output_path}/{project_name}.FCStd")
-            if not error_in_piece:
-                top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors, save_files)
-                front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors, save_files)
-
-            FreeCAD.closeDocument(project_name)
-
-            if not error_in_piece:
-                return {"top_view": top_view_file, "front_view": front_view_file}
-            else:
-                return {"top_view": None, "front_view": None}
         except Exception as e:  # noqa: E722
             print(e)
             FreeCAD.closeDocument(project_name)
             return {"top_view": None, "front_view": None}
+
+    def try_get_piece_technical_drawing(self, data, colors, save_files):
+        project_name = f"{data['name']}_piece_scaled".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+        if colors is None:
+            colors = {
+                "projection_color": "#000000",
+                "dimension_color": "#000000"
+            }
+
+        original_dimensions = flatten_dimensions(data)
+        scale = 1000 / (1.25 * original_dimensions['A'])
+        data["dimensions"] = {}
+        for k, v in original_dimensions.items():
+            data["dimensions"][k] = v * scale
+
+        if FreeCAD.ActiveDocument is None:
+            FreeCAD.newDocument(project_name)
+        document = FreeCAD.getDocument(project_name)
+
+        sketch = self.create_sketch()
+        self.get_shape_base(data, sketch)
+
+        document = FreeCAD.ActiveDocument
+        document.recompute()
+
+        part_name = "piece"
+
+        base = self.extrude_sketch(
+            sketch=sketch,
+            part_name=part_name,
+            height=data["dimensions"]["B"]
+        )
+
+        document.recompute()
+
+        negative_winding_window = self.get_negative_winding_window(data["dimensions"])
+
+        piece_cut = document.addObject("Part::Cut", "Cut")
+        piece_cut.Base = base
+        piece_cut.Tool = negative_winding_window
+        document.recompute()
+
+        piece_with_extra = self.get_shape_extras(data, piece_cut)
+
+        piece = document.addObject('Part::Refine', 'Refine')
+        piece.Source = piece_with_extra
+
+        document.recompute()
+
+        error_in_piece = False
+        for obj in FreeCAD.ActiveDocument.Objects:
+            if not obj.isValid():
+                error_in_piece = True
+                print(f"Error in part: {obj.Name}")
+                break
+
+        pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
+
+        margin = 35
+
+        if not error_in_piece:
+            top_view = self.get_top_projection(data, piece, margin)
+            front_view = self.get_front_projection(data, piece, margin)
+        if save_files:
+            document.saveAs(f"{self.output_path}/{project_name}.FCStd")
+        if not error_in_piece:
+            top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors, save_files)
+            front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors, save_files)
+
+        FreeCAD.closeDocument(project_name)
+
+        return (
+            {"top_view": None, "front_view": None}
+            if error_in_piece
+            else {"top_view": top_view_file, "front_view": front_view_file}
+        )
 
     def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
         def calculate_total_dimensions():
