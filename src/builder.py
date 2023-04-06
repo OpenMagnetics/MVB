@@ -126,7 +126,7 @@ class Builder:
                 if geometrical_part['type'] == 'spacer':
                     spacer = self.get_spacer(geometrical_part)
                     pieces_to_export.append(spacer)
-                elif geometrical_part['type'] == 'half set':
+                elif geometrical_part['type'] in ['half set', 'toroidal']:
                     shape_data = geometrical_part['shape']
                     part_builder = Builder().factory(shape_data)
 
@@ -142,17 +142,17 @@ class Builder:
                     piece.Placement.Matrix = m
                     document.recompute()
 
-                    piece.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
-                                                        geometrical_part['coordinates'][0] * 1000,
-                                                        geometrical_part['coordinates'][1] * 1000))
-                    document.recompute()
-
                     if geometrical_part['machining'] is not None:
                         for machining in geometrical_part['machining']:
                             piece = part_builder.apply_machining(piece=piece,
                                                                  machining=machining,
                                                                  dimensions=flatten_dimensions(shape_data))
                         document.recompute()
+
+                    piece.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
+                                                        geometrical_part['coordinates'][0] * 1000,
+                                                        geometrical_part['coordinates'][1] * 1000))
+                    document.recompute()
 
                     pieces_to_export.append(piece)
 
@@ -186,10 +186,13 @@ class Builder:
                 if piece['type'] == "half set":
                     dimensions = flatten_dimensions(piece['shape'])
                     base_height += dimensions['B']
+                elif piece['type'] == "toroidal":
+                    dimensions = flatten_dimensions(piece['shape'])
+                    base_height += dimensions['A']
                 elif piece['type'] == "spacer":
                     base_height += piece['dimensions'][1] * 1000
 
-                if piece['type'] == "half set":
+                if piece['type'] in ['half set', 'toroidal']:
                     base_width = max(base_width, dimensions['A'])
 
             return base_width, base_height
@@ -214,13 +217,12 @@ class Builder:
 
             projection_rotation = 180
             for piece in geometrical_description:
-                if piece['type'] == "half set":
+                if piece['type'] in ['half set', 'toroidal']: 
                     dimensions = flatten_dimensions(piece['shape'])
 
                     if piece['shape']['family'] in ['efd']:
                         projection_depth = -dimensions['C'] / 2 + dimensions['K'] + dimensions['F2'] / 2
                     elif piece['shape']['family'] in ['epx', 'ep']:
-                        # projection_rotation = 0
                         projection_depth = dimensions['C'] / 2 - dimensions['K']
                     else:
                         projection_depth = 0
@@ -239,7 +241,6 @@ class Builder:
                     "projection_color": "#000000",
                     "dimension_color": "#000000"
                 }
-
             front_view_file = self.add_dimensions_and_export_view(core_data, scale, base_height, base_width, front_view, project_name, margin, colors, save_files)
             if save_files:
                 with open(f"{output_path}/{project_name}.svg", "w") as svgFile:
@@ -342,6 +343,11 @@ class Builder:
                         center_offset = -dimensions['A'] / 2 + (dimensions['A'] - dimensions['E']) / 4
                     else:
                         center_offset = -dimensions['A'] / 2 + dimensions['C'] / 2
+                    break
+
+                elif piece['type'] == "toroidal":
+                    dimensions = flatten_dimensions(piece['shape'])
+                    center_offset = 0
                     break
 
         grouped_gaps_per_column = {}
@@ -679,17 +685,20 @@ class IPiece(metaclass=ABCMeta):
             base = self.extrude_sketch(
                 sketch=sketch,
                 part_name=part_name,
-                height=data["dimensions"]["B"]
+                height=data["dimensions"]["B"] if data["family"] != 't' else data["dimensions"]["C"]
             )
 
             document.recompute()
 
             negative_winding_window = self.get_negative_winding_window(data["dimensions"])
 
-            piece_cut = document.addObject("Part::Cut", "Cut")
-            piece_cut.Base = base
-            piece_cut.Tool = negative_winding_window
-            document.recompute()
+            if negative_winding_window is None:
+                piece_cut = base
+            else:
+                piece_cut = document.addObject("Part::Cut", "Cut")
+                piece_cut.Base = base
+                piece_cut.Tool = negative_winding_window
+                document.recompute()
 
             piece_with_extra = self.get_shape_extras(data, piece_cut)
 
@@ -698,7 +707,13 @@ class IPiece(metaclass=ABCMeta):
 
             document.recompute()
 
-            piece.Placement.move(FreeCAD.Vector(0, 0, -data["dimensions"]["B"]))
+            if data["family"] != 't':
+                piece.Placement.move(FreeCAD.Vector(0, 0, -data["dimensions"]["B"]))
+            else:
+                piece.Placement.move(FreeCAD.Vector(0, 0, -data["dimensions"]["C"] / 2))
+                m = piece.Placement.Matrix
+                m.rotateX(math.radians(90))
+                piece.Placement.Matrix = m
             document.recompute()
 
             pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
@@ -726,6 +741,7 @@ class IPiece(metaclass=ABCMeta):
             )
         except Exception as e:  # noqa: E722
             print(e)
+            project_name = f"{data['name']}_piece_scaled".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
             FreeCAD.closeDocument(project_name)
             return {"top_view": None, "front_view": None}
 
@@ -758,17 +774,20 @@ class IPiece(metaclass=ABCMeta):
         base = self.extrude_sketch(
             sketch=sketch,
             part_name=part_name,
-            height=data["dimensions"]["B"]
+            height=data["dimensions"]["B"] if data["family"] != 't' else data["dimensions"]["C"]
         )
 
         document.recompute()
 
         negative_winding_window = self.get_negative_winding_window(data["dimensions"])
 
-        piece_cut = document.addObject("Part::Cut", "Cut")
-        piece_cut.Base = base
-        piece_cut.Tool = negative_winding_window
-        document.recompute()
+        if negative_winding_window is None:
+            piece_cut = base
+        else:
+            piece_cut = document.addObject("Part::Cut", "Cut")
+            piece_cut.Base = base
+            piece_cut.Tool = negative_winding_window
+            document.recompute()
 
         piece_with_extra = self.get_shape_extras(data, piece_cut)
 
@@ -3253,14 +3272,207 @@ class Ut(IPiece):
 
 
 class T(IPiece):
+    def get_dimensions_and_subtypes(self):
+        return {1: ["A", "B", "C"]}
+
     def get_negative_winding_window(self, dimensions):
-        pass  # TBD
+        return None
 
     def get_shape_base(self, data, sketch):
-        pass  # TBD
+        dimensions = data["dimensions"]
+
+        inner_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["B"] / 2), False)
+        sketch.addConstraint(Sketcher.Constraint('Coincident', inner_circle, 3, -1, 1))
+        sketch.addConstraint(Sketcher.Constraint('Diameter', inner_circle, dimensions["B"]))
+        outer_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["A"] / 2), False)
+        sketch.addConstraint(Sketcher.Constraint('Coincident', outer_circle, 3, -1, 1))
+        sketch.addConstraint(Sketcher.Constraint('Diameter', outer_circle, dimensions["A"]))
 
     def get_shape_extras(self, data, piece):
-        return piece  # TBD
+        # rotation in order to avoid cut in projection
+        m = piece.Base.Placement.Matrix
+        m.rotateZ(math.radians(180))
+        piece.Base.Placement.Matrix = m
+        return piece
+
+
+    def get_top_projection(self, data, piece, margin):
+
+        dimensions = data["dimensions"]
+
+        document = FreeCAD.ActiveDocument
+        page = document.addObject('TechDraw::DrawPage', 'Top Page')
+        template = document.addObject('TechDraw::DrawSVGTemplate', 'Template')
+        page.Template = template
+        document.recompute()
+
+        top_view = document.addObject('TechDraw::DrawViewPart', 'TopView')
+        page.addView(top_view)
+        top_view.Source = [piece]
+        top_view.Direction = FreeCAD.Vector(0.00, 0.00, 1.00)
+        top_view.XDirection = FreeCAD.Vector(0.00, -1.00, 0.00)
+        top_view.X = margin + dimensions['A'] / 2
+        top_view.Y = 1000 - data['dimensions']['A'] / 2 - margin / 2
+
+        top_view.Scale = 1
+        document.recompute()
+        return top_view
+
+    def get_front_projection(self, data, piece, margin):
+
+        dimensions = data["dimensions"]
+
+        document = FreeCAD.ActiveDocument
+        page = document.addObject('TechDraw::DrawPage', 'Top Page')
+        template = document.addObject('TechDraw::DrawSVGTemplate', 'Template')
+        page.Template = template
+        document.recompute()
+
+        semi_depth = 0
+
+        section_front_view = document.addObject('TechDraw::DrawViewSection', 'FrontView')
+        page.addView(section_front_view)
+        section_front_view.BaseView = document.getObject('TopView')
+        section_front_view.Source = document.getObject('TopView').Source
+        section_front_view.ScaleType = 0
+        section_front_view.SectionDirection = 'Down'
+        section_front_view.SectionNormal = FreeCAD.Vector(-1.000, 0.000, 0.000)
+        section_front_view.SectionOrigin = FreeCAD.Vector(semi_depth, 0.000, 0)
+        section_front_view.SectionSymbol = ''
+        section_front_view.Label = 'Section  - '
+        section_front_view.Scale = 1.000000
+        section_front_view.ScaleType = 0
+        section_front_view.Rotation = 0
+        section_front_view.Direction = FreeCAD.Vector(-1.00, 0.00, 0.00)
+        section_front_view.XDirection = FreeCAD.Vector(0.00, -1.00, 0.00)
+        section_front_view.X = margin + dimensions['A'] / 2
+        section_front_view.Y = 1000 - margin - dimensions['C'] / 2
+        document.recompute()
+
+        return section_front_view
+
+    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
+        def calculate_total_dimensions():
+            if view.Name == "TopView":
+                base_width = data['dimensions']['A'] + margin
+                base_width += horizontal_offset
+
+                base_height = data['dimensions']['A'] + margin
+                base_height += vertical_offset
+                base_height += increment
+
+            if view.Name == "FrontView":
+                base_width = data['dimensions']['A'] + margin
+                base_width += horizontal_offset
+
+                base_height = data['dimensions']['C'] + margin
+                base_height += vertical_offset
+
+            return base_width, base_height
+
+        def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
+            dimension_svg = ""
+
+            if dimension_type == "DistanceY":
+                main_line_start = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
+                main_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
+                left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
+                left_aux_line_end = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
+                right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
+                right_aux_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
+
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + ending_coordinates[0] + label_offset - dimension_font_size / 4},{1000 - view.Y.Value + label_alignment})" stroke-linecap="square" stroke-linejoin="bevel">
+                                         <text x="0" y="0" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400" transform="rotate(-90)">{dimension_label}</text>
+                                        </g>\n""".replace("                                    ", "")
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
+                                        </g>\n""".replace("                                     ", "")
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
+                                         <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0] + label_offset},{ending_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M0,0 L6,-15 L-6,-15 L0,0"/>
+                                         </g>
+                                         <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0] + label_offset},{starting_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-6,15 L6,15 L0,0"/>
+                                         </g>
+                                        </g>\n""".replace("                                     ", "")
+            elif dimension_type == "DistanceX":
+                main_line_start = [starting_coordinates[0], starting_coordinates[1] + label_offset]
+                main_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
+                left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
+                left_aux_line_end = [starting_coordinates[0], starting_coordinates[1] + label_offset]
+                right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
+                right_aux_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
+
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + label_alignment},{1000 - view.Y.Value})" stroke-linecap="square" stroke-linejoin="bevel">
+                                         <text x="0" y="{ending_coordinates[1] + label_offset - dimension_font_size / 4}" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400">{dimension_label}</text>
+                                        </g>\n""".replace("                                    ", "")
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
+                                        </g>\n""".replace("                                     ", "")
+                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
+                                         <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0]},{ending_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-15,-6 L-15,6 L0,0"/>
+                                         </g>
+                                         <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0]},{starting_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
+                                          <path fill-rule="evenodd" vector-effect="none" d="M0,0 L15,6 L15,-6 L0,0"/>
+                                         </g>
+                                        </g>\n""".replace("                                     ", "")
+            return dimension_svg
+
+        projection_line_thickness = 4
+        dimension_line_thickness = 1
+        dimension_font_size = 30
+        horizontal_offset = 75
+        vertical_offset = 75
+        increment = 50
+        dimensions = data["dimensions"]
+        shape_semi_height = dimensions['A'] / 2
+        base_width, base_height = calculate_total_dimensions()
+        head = f"""<svg xmlns:dc="http://purl.org/dc/elements/1.1/" baseProfile="tiny" xmlns:svg="http://www.w3.org/2000/svg" version="1.2" width="100%" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {base_width} {base_height}" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" height="100%" xmlns:freecad="http://www.freecadweb.org/wiki/index.php?title=Svg_Namespace" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+                     <title>FreeCAD SVG Export</title>
+                     <desc>Drawing page: {view.Name} exported from FreeCAD document: {project_name}</desc>
+                     <defs/>
+                     <g id="{view.Name}" inkscape:label="TechDraw" inkscape:groupmode="layer">
+                      <g id="DrawingContent" fill="none" stroke="black" stroke-width="1" fill-rule="evenodd" stroke-linecap="square" stroke-linejoin="bevel">""".replace("                    ", "")
+        projetion_head = f"""    <g fill-opacity="1" font-size="29.1042" font-style="normal" fill="#ffffff" font-family="MS Shell Dlg 2" stroke="none" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})">\n"""
+        projetion_tail = """   </g>\n"""
+        tail = """</g>
+                 </g>
+                </svg>
+                """.replace("                ", "")
+        svgFile_data = ""
+        svgFile_data += head
+        svgFile_data += projetion_head
+        svgFile_data += TechDraw.viewPartAsSvg(view).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+        svgFile_data += projetion_tail
+        if view.Name == "TopView":
+            svgFile_data += create_dimension(starting_coordinates=[-dimensions['B'] / 2, 0],
+                                             ending_coordinates=[dimensions['B'] / 2, 0],
+                                             dimension_type="DistanceX",
+                                             dimension_label=f"B: {round(original_dimensions['B'], 2)} mm",
+                                             label_offset=vertical_offset + shape_semi_height)
+            vertical_offset += increment
+            svgFile_data += create_dimension(starting_coordinates=[-dimensions['A'] / 2, 0],
+                                             ending_coordinates=[dimensions['A'] / 2, 0],
+                                             dimension_type="DistanceX",
+                                             dimension_label=f"A: {round(original_dimensions['A'], 2)} mm",
+                                             label_offset=vertical_offset + shape_semi_height)
+            vertical_offset += increment
+        else:
+            svgFile_data += create_dimension(starting_coordinates=[0, -dimensions['C'] / 2],
+                                             ending_coordinates=[0, dimensions['C'] / 2],
+                                             dimension_type="DistanceY",
+                                             dimension_label=f"C: {round(original_dimensions['C'], 2)} mm",
+                                             label_offset=horizontal_offset)
+
+        svgFile_data += tail
+        
+        if save_files:
+            svgFile = open(f"{self.output_path}/{project_name}_{view.Name}.svg", "w")
+            svgFile.write(svgFile_data)
+            svgFile.close() 
+        return svgFile_data
+
 
 
 if __name__ == '__main__':  # pragma: no cover
