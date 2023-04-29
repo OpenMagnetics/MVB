@@ -1886,21 +1886,19 @@ class Er(E):
         document.recompute()
 
         if 'G' in dimensions and dimensions["G"] > dimensions["F"]:
-            lateral_top_cube = document.addObject("Part::Box", "lateral_top_cube")
-            lateral_top_cube.Length = dimensions["C"]
-            lateral_top_cube.Width = dimensions["G"] / 2 - dimensions["F"] / 2
-            lateral_top_cube.Height = dimensions["D"]
-            lateral_top_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, dimensions["F"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
-
-            lateral_bottom_cube = document.addObject("Part::Box", "lateral_bottom_cube")
-            lateral_bottom_cube.Length = dimensions["C"]
-            lateral_bottom_cube.Width = dimensions["G"] / 2 - dimensions["F"] / 2
-            lateral_bottom_cube.Height = dimensions["D"]
-            lateral_bottom_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["G"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
-            winding_window_aux = document.addObject("Part::MultiFuse", "Fusion")
-            winding_window_aux.Shapes = [winding_window, lateral_top_cube, lateral_bottom_cube]
-
             if dimensions["C"] > dimensions["F"]:
+                lateral_top_cube = document.addObject("Part::Box", "lateral_top_cube")
+                lateral_top_cube.Length = dimensions["C"]
+                lateral_top_cube.Width = dimensions["G"] / 2 - dimensions["F"] / 2
+                lateral_top_cube.Height = dimensions["D"]
+                lateral_top_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, dimensions["F"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+                lateral_bottom_cube = document.addObject("Part::Box", "lateral_bottom_cube")
+                lateral_bottom_cube.Length = dimensions["C"]
+                lateral_bottom_cube.Width = dimensions["G"] / 2 - dimensions["F"] / 2
+                lateral_bottom_cube.Height = dimensions["D"]
+                lateral_bottom_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["G"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
                 lateral_right_cube = document.addObject("Part::Box", "lateral_right_cube")
                 lateral_right_cube.Length = dimensions["C"] / 2 - dimensions["F"] / 2
                 lateral_right_cube.Width = dimensions["G"]
@@ -1912,9 +1910,24 @@ class Er(E):
                 lateral_left_cube.Width = dimensions["G"]
                 lateral_left_cube.Height = dimensions["D"]
                 lateral_left_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["G"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
-                winding_window_aux.Shapes.append(lateral_right_cube)
-                winding_window_aux.Shapes.append(lateral_left_cube)
+                winding_window_aux = document.addObject("Part::MultiFuse", "Fusion")
+                winding_window_aux.Shapes = [winding_window, lateral_top_cube, lateral_bottom_cube, lateral_right_cube, lateral_left_cube]
+            else:
+                lateral_top_cube = document.addObject("Part::Box", "lateral_top_cube")
+                lateral_top_cube.Length = dimensions["C"]
+                lateral_top_cube.Width = dimensions["G"] / 2 - dimensions["F"] / 2
+                lateral_top_cube.Height = dimensions["D"]
+                lateral_top_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, dimensions["F"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
+                lateral_bottom_cube = document.addObject("Part::Box", "lateral_bottom_cube")
+                lateral_bottom_cube.Length = dimensions["C"]
+                lateral_bottom_cube.Width = dimensions["G"] / 2 - dimensions["F"] / 2
+                lateral_bottom_cube.Height = dimensions["D"]
+                lateral_bottom_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["G"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+                winding_window_aux = document.addObject("Part::MultiFuse", "Fusion")
+                winding_window_aux.Shapes = [winding_window, lateral_top_cube, lateral_bottom_cube]
+
+            print(winding_window_aux.Shapes)
             document.recompute()
             winding_window = winding_window_aux
 
