@@ -4,20 +4,36 @@ import math
 import os
 import json
 from abc import ABCMeta, abstractmethod
+
+file_dir = os.path.dirname(__file__)
+sys.path.append(file_dir)
+
 import utils
 import copy
 import pathlib
-import PyMKF
+import platform
 
-sys.path.insert(0, "/usr/lib/python3/dist-packages")
-sys.path.append("/usr/lib/freecad-daily/lib")
-sys.path.append("/usr/share/freecad-daily/Ext")
-sys.path.append("/usr/share/freecad-daily/Mod")
-sys.path.append("/usr/share/freecad-daily/Mod/Draft")
-sys.path.append("/usr/share/freecad-daily/Mod/Part")
-sys.path.append("/usr/share/freecad-daily/Mod/PartDesign")
-sys.path.append("/usr/share/freecad-daily/Mod/Sketcher")
-sys.path.append("/usr/share/freecad-daily/Mod/Arch")
+if platform.system() == "Windows":
+    sys.path.insert(0, "C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\bin\\Lib\\site-packages")
+    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\bin")
+    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Ext")
+    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod")
+    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\Draft")
+    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\Part")
+    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\PartDesign")
+    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\Sketcher")
+    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\Arch")
+else:
+    sys.path.insert(0, "/usr/lib/python3/dist-packages")
+    sys.path.append("/usr/lib/freecad-daily/lib")
+    sys.path.append("/usr/share/freecad-daily/Ext")
+    sys.path.append("/usr/share/freecad-daily/Mod")
+    sys.path.append("/usr/share/freecad-daily/Mod/Draft")
+    sys.path.append("/usr/share/freecad-daily/Mod/Part")
+    sys.path.append("/usr/share/freecad-daily/Mod/PartDesign")
+    sys.path.append("/usr/share/freecad-daily/Mod/Sketcher")
+    sys.path.append("/usr/share/freecad-daily/Mod/Arch")
+
 import FreeCAD  # noqa: E402
 import Import  # noqa: E402
 import importOBJ  # noqa: E402
