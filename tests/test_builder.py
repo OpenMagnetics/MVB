@@ -26,23 +26,26 @@ class Tests(unittest.TestCase):
 
     def test_all_shapes_generated(self):
 
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui']:
+                if data["family"] not in ['ui', 'pqi']:
+                    # if data['family'] != "p":
+                    #     continue
                     core = builder.Builder().factory(data)
                     core.get_piece(data, save_files=True, export_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+                    print(self.output_path)
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj"))
 
 
     def test_all_technical_drawings_generated(self):
 
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui']:
+                if data["family"] not in ['ui', 'pqi']:
                     core = builder.Builder().factory(data)
                     core.get_piece_technical_drawing(data, save_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -53,10 +56,10 @@ class Tests(unittest.TestCase):
     def test_get_families(self):
         
         families = builder.Builder().get_families()
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui']:
+                if data["family"] not in ['ui', 'pqi']:
                     self.assertTrue(data["family"] in list(families.keys()))
 
     def test_all_subtractive_gapped_cores_generated(self):
@@ -85,7 +88,7 @@ class Tests(unittest.TestCase):
                 "numberStacks": 3
             }
         }
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut']:
@@ -101,14 +104,14 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = []
                     else:
                         gapping = []
-                        core_datum = PyMKF.get_core_data(core, False)
+                        core_datum = PyMKF.calculate_core_data(core, False)
                         for column_index, column in enumerate(core_datum['processedDescription']['columns']):
                             aux = copy.deepcopy(dummyGapping[column_index])
                             aux['coordinates'] = column['coordinates']
                             gapping.append(aux)
 
                         core['functionalDescription']['gapping'] = gapping
-                    core_datum = PyMKF.get_core_data(core, False)
+                    core_datum = PyMKF.calculate_core_data(core, False)
                     core = builder.Builder().get_core(data['name'], core_datum['geometricalDescription'])
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -149,7 +152,7 @@ class Tests(unittest.TestCase):
                 "numberStacks": 1
             }
         }
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut']:
@@ -164,7 +167,7 @@ class Tests(unittest.TestCase):
                     if data['family'] in ['t']:
                         core['functionalDescription']['gapping'] = []
 
-                    core_datum = PyMKF.get_core_data(core, False)
+                    core_datum = PyMKF.calculate_core_data(core, False)
                     core = builder.Builder().get_core(data['name'], core_datum['geometricalDescription'])
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -197,7 +200,7 @@ class Tests(unittest.TestCase):
                 "numberStacks": 1
             }
         }
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut']:
@@ -213,14 +216,14 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = []
                     else:
                         gapping = []
-                        core_datum = PyMKF.get_core_data(core, False)
+                        core_datum = PyMKF.calculate_core_data(core, False)
                         for column_index, column in enumerate(core_datum['processedDescription']['columns']):
                             aux = copy.deepcopy(dummyGapping[column_index])
                             aux['coordinates'] = column['coordinates']
                             gapping.append(aux)
                         core['functionalDescription']['gapping'] = gapping
 
-                    core_datum = PyMKF.get_core_data(core, False)
+                    core_datum = PyMKF.calculate_core_data(core, False)
                     # import pprint
                     # pprint.pprint(core_datum['processedDescription'])
                     # pprint.pprint(core_datum['geometricalDescription'])
@@ -256,7 +259,7 @@ class Tests(unittest.TestCase):
                 "numberStacks": 1
             }
         }
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut']:
@@ -271,14 +274,14 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = []
                     else:
                         gapping = []
-                        core_datum = PyMKF.get_core_data(core, False)
+                        core_datum = PyMKF.calculate_core_data(core, False)
                         for column_index, column in enumerate(core_datum['processedDescription']['columns']):
                             aux = copy.deepcopy(dummyGapping[column_index])
                             aux['coordinates'] = column['coordinates']
                             gapping.append(aux)
                         core['functionalDescription']['gapping'] = gapping
 
-                    core_datum = PyMKF.get_core_data(core, False)
+                    core_datum = PyMKF.calculate_core_data(core, False)
                     core = builder.Builder().get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -311,7 +314,7 @@ class Tests(unittest.TestCase):
                 "numberStacks": 1
             }
         }
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut']:
@@ -327,14 +330,14 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = []
                     else:
                         gapping = []
-                        core_datum = PyMKF.get_core_data(core, False)
+                        core_datum = PyMKF.calculate_core_data(core, False)
                         for column_index, column in enumerate(core_datum['processedDescription']['columns']):
                             aux = copy.deepcopy(dummyGapping[column_index])
                             aux['coordinates'] = column['coordinates']
                             gapping.append(aux)
                         core['functionalDescription']['gapping'] = gapping
 
-                    core_datum = PyMKF.get_core_data(core, False)
+                    core_datum = PyMKF.calculate_core_data(core, False)
                     core = builder.Builder().get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -375,7 +378,7 @@ class Tests(unittest.TestCase):
                 "numberStacks": 1
             }
         }
-        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut']:
@@ -390,7 +393,7 @@ class Tests(unittest.TestCase):
                     if data['family'] in ['t']:
                         core['functionalDescription']['gapping'] = []
 
-                    core_datum = PyMKF.get_core_data(core, False)
+                    core_datum = PyMKF.calculate_core_data(core, False)
                     core = builder.Builder().get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")

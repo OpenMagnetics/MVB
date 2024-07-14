@@ -14,15 +14,20 @@ import pathlib
 import platform
 
 if platform.system() == "Windows":
-    sys.path.insert(0, "C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\bin\\Lib\\site-packages")
-    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\bin")
-    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Ext")
-    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod")
-    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\Draft")
-    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\Part")
-    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\PartDesign")
-    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\Sketcher")
-    sys.path.append("C:\\Users\\alfonso.martinez\\AppData\\Local\\Programs\\FreeCAD 0.21\\Mod\\Arch")
+    if os.path.exists( f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 0.21"):
+        freecad_path = f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 0.21"
+    elif os.path.exists( f"{os.environ['ProgramFiles']}\\FreeCAD 0.21"):
+        freecad_path = f"{os.environ['ProgramFiles']}\\FreeCAD 0.21"
+
+    sys.path.insert(0, f"{freecad_path}\\bin\\Lib\\site-packages")
+    sys.path.append(f"{freecad_path}\\bin")
+    sys.path.append(f"{freecad_path}\\Ext")
+    sys.path.append(f"{freecad_path}\\Mod")
+    sys.path.append(f"{freecad_path}\\Mod\\Draft")
+    sys.path.append(f"{freecad_path}\\Mod\\Part")
+    sys.path.append(f"{freecad_path}\\Mod\\PartDesign")
+    sys.path.append(f"{freecad_path}\\Mod\\Sketcher")
+    sys.path.append(f"{freecad_path}\\Mod\\Arch")
 else:
     sys.path.insert(0, "/usr/lib/python3/dist-packages")
     sys.path.append("/usr/lib/freecad-daily/lib")
@@ -37,6 +42,8 @@ else:
 import FreeCAD  # noqa: E402
 import Import  # noqa: E402
 import importOBJ  # noqa: E402
+# Bear in mind that the "import MeshPart" in importOBJ.py can break other programs, and must be commented
+
 import Sketcher  # noqa: E402
 import Part  # noqa: E402
 from BasicShapes import Shapes  # noqa: E402
@@ -106,8 +113,6 @@ class Builder:
         document = FreeCAD.ActiveDocument
         document.recompute()
 
-        print(geometrical_data)
-
         spacer = document.addObject("Part::Box", "Spacer")
         spacer.Length = geometrical_data["dimensions"][2] * 1000
         spacer.Width = geometrical_data["dimensions"][0] * 1000
@@ -130,6 +135,8 @@ class Builder:
         try:
             pieces_to_export = []
             project_name = f"{project_name}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            os.makedirs(output_path, exist_ok=True)
 
             close_file_after_finishing = False
             if FreeCAD.ActiveDocument is None:
@@ -158,7 +165,7 @@ class Builder:
                     piece.Placement.Matrix = m
                     document.recompute()
 
-                    if geometrical_part['machining'] is not None:
+                    if 'machining' in geometrical_part and geometrical_part['machining'] is not None:
                         for machining in geometrical_part['machining']:
                             piece = part_builder.apply_machining(piece=piece,
                                                                  machining=machining,
@@ -168,22 +175,33 @@ class Builder:
                     piece.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
                                                         geometrical_part['coordinates'][0] * 1000,
                                                         geometrical_part['coordinates'][1] * 1000))
+
+                    # if the piece is half a set, we add a residual gap between the pieces
+                    if geometrical_part['type'] in ['half set']:
+                        residual_gap = 5e-6
+                        if geometrical_part['rotation'][0] > 0:
+                            piece.Placement.move(FreeCAD.Vector(0, 0, residual_gap / 2 * 1000))
+                        else:
+                            piece.Placement.move(FreeCAD.Vector(0, 0, -residual_gap / 2 * 1000))
+
                     document.recompute()
 
                     pieces_to_export.append(piece)
 
             if export_files:
-                Import.export(pieces_to_export, f"{output_path}/{project_name}.step")
-                importOBJ.export(pieces_to_export, f"{output_path}/{project_name}.obj")
+                for index, piece in enumerate(pieces_to_export):
+                    piece.Label = f"core_part_{index}"
+                Import.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.step")
+                importOBJ.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.obj")
 
             if save_files:
-                document.saveAs(f"{output_path}/{project_name}.FCStd")
+                document.saveAs(f"{output_path}{os.path.sep}{project_name}.FCStd")
 
             if close_file_after_finishing:
                 FreeCAD.closeDocument(project_name)
 
             if export_files:
-                return f"{output_path}/{project_name}.step", f"{output_path}/{project_name}.obj"
+                return f"{output_path}{os.path.sep}{project_name}.step", f"{output_path}{os.path.sep}{project_name}.obj"
             else:
                 return pieces_to_export
 
@@ -1128,7 +1146,6 @@ class IPiece(metaclass=ABCMeta):
 
     def apply_machining(self, piece, machining, dimensions):
         document = FreeCAD.ActiveDocument
-        # print(machining)
 
         original_tool = document.addObject("Part::Box", "tool")
         original_tool.Length = dimensions["A"]
@@ -1263,36 +1280,43 @@ class P(IPiece):
 
             external_vertexes = [external_top_left_vertex, external_bottom_left_vertex, external_top_right_vertex, external_bottom_right_vertex]
 
+            internal_vertexes = []
             internal_top_right_vertex = self.edges_in_boundbox(part=piece,
                                                                xmin=internal_xmin,
                                                                xmax=dimensions["E"] / 2,
                                                                ymin=dimensions["G"] / 4,
                                                                ymax=3 * dimensions["G"] / 4,
                                                                zmin=dimensions["B"] - dimensions["D"],
-                                                               zmax=dimensions["B"])[0]
+                                                               zmax=dimensions["B"])
+            if len(internal_top_right_vertex) > 0:
+                internal_vertexes.append(internal_top_right_vertex[0])
             internal_bottom_right_vertex = self.edges_in_boundbox(part=piece,
                                                                   xmin=internal_xmin,
                                                                   xmax=dimensions["E"] / 2,
                                                                   ymax=-dimensions["G"] / 4,
                                                                   ymin=-3 * dimensions["G"] / 4,
                                                                   zmin=dimensions["B"] - dimensions["D"],
-                                                                  zmax=dimensions["B"])[0]
+                                                                  zmax=dimensions["B"])
+            if len(internal_bottom_right_vertex) > 0:
+                internal_vertexes.append(internal_bottom_right_vertex[0])
             internal_top_left_vertex = self.edges_in_boundbox(part=piece,
                                                               xmin=-dimensions["E"] / 2,
                                                               xmax=-internal_xmin,
                                                               ymin=dimensions["G"] / 4,
                                                               ymax=3 * dimensions["G"] / 4,
                                                               zmin=dimensions["B"] - dimensions["D"],
-                                                              zmax=dimensions["B"])[0]
+                                                              zmax=dimensions["B"])
+            if len(internal_top_left_vertex) > 0:
+                internal_vertexes.append(internal_top_left_vertex[0])
             internal_bottom_left_vertex = self.edges_in_boundbox(part=piece,
                                                                  xmin=-dimensions["E"] / 2,
                                                                  xmax=-internal_xmin,
                                                                  ymax=-dimensions["G"] / 4,
                                                                  ymin=-3 * dimensions["G"] / 4,
                                                                  zmin=dimensions["B"] - dimensions["D"],
-                                                                 zmax=dimensions["B"])[0]
-
-            internal_vertexes = [internal_top_right_vertex, internal_bottom_right_vertex, internal_top_left_vertex, internal_bottom_left_vertex]
+                                                                 zmax=dimensions["B"])
+            if len(internal_bottom_left_vertex) > 0:
+                internal_vertexes.append(internal_bottom_left_vertex[0])
 
             if familySubtype == '2':
                 if "C" not in dimensions:
@@ -1356,7 +1380,7 @@ class P(IPiece):
         external_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["A"] / 2), False)
         sketch.addConstraint(Sketcher.Constraint('Coincident', external_circle, 3, -1, 1))
         sketch.addConstraint(Sketcher.Constraint('Diameter', external_circle, dimensions["A"]))
-        if dimensions["H"] > 0:
+        if "H" in dimensions and dimensions["H"] > 0:
             internal_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["H"] / 2), False)
             sketch.addConstraint(Sketcher.Constraint('Coincident', internal_circle, 3, -1, 1))
             sketch.addConstraint(Sketcher.Constraint('Diameter', internal_circle, dimensions["H"]))
@@ -1838,7 +1862,6 @@ class E(IPiece):
 
     def apply_machining(self, piece, machining, dimensions):
         document = FreeCAD.ActiveDocument
-        # print(machining)
 
         original_tool = document.addObject("Part::Box", "tool")
         original_tool.Length = dimensions["A"]
@@ -1943,7 +1966,6 @@ class Er(E):
                 winding_window_aux = document.addObject("Part::MultiFuse", "Fusion")
                 winding_window_aux.Shapes = [winding_window, lateral_top_cube, lateral_bottom_cube]
 
-            print(winding_window_aux.Shapes)
             document.recompute()
             winding_window = winding_window_aux
 
@@ -2212,7 +2234,6 @@ class Ep(E):
 
     def apply_machining(self, piece, machining, dimensions):
         document = FreeCAD.ActiveDocument
-        # print(machining)
 
         original_tool = document.addObject("Part::Box", "tool")
         original_tool.Length = dimensions["A"]
@@ -2255,6 +2276,15 @@ class Ep(E):
         document.recompute()
 
         return machined_piece
+
+    def get_shape_extras(self, data, piece):
+        # movement to center column
+        dimensions = data["dimensions"]
+
+        piece.Placement.move(FreeCAD.Vector(-dimensions["F"] / 2,
+                                            0,
+                                            0))
+        return piece
 
 
 class Epx(E):
@@ -2366,7 +2396,6 @@ class Epx(E):
 
     def apply_machining(self, piece, machining, dimensions):
         document = FreeCAD.ActiveDocument
-        # print(machining)
 
         original_tool = document.addObject("Part::Box", "tool")
         original_tool.Length = dimensions["A"]
@@ -3278,7 +3307,6 @@ class Ut(IPiece):
 
     def apply_machining(self, piece, machining, dimensions):
         document = FreeCAD.ActiveDocument
-        # print(machining)
 
         tool = document.addObject("Part::Box", "tool")
         tool.Length = dimensions["A"]
@@ -3506,7 +3534,7 @@ class T(IPiece):
 
 if __name__ == '__main__':  # pragma: no cover
 
-    with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/shapes.ndjson', 'r') as f:
+    with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
         for ndjson_line in f.readlines():
             data = json.loads(ndjson_line)
             if data["name"] == "PQ 40/40":
