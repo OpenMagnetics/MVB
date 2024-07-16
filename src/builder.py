@@ -30,12 +30,12 @@ if platform.system() == "Windows":
     sys.path.append(f"{freecad_path}\\Mod\\Arch")
 else:
     sys.path.insert(0, "/usr/lib/python3/dist-packages")
-    sys.path.append("/usr/lib/freecad/lib")
-    sys.path.append("/usr/share/freecad/Ext")
-    sys.path.append("/usr/share/freecad/Mod")
-    sys.path.append("/usr/share/freecad/Mod/Part")
-    sys.path.append("/usr/share/freecad/Mod/Draft")
-    sys.path.append("/usr/share/freecad/Mod/Draft/draftobjects")
+    sys.path.append("/usr/lib/freecad-daily/lib")
+    sys.path.append("/usr/share/freecad-daily/Ext")
+    sys.path.append("/usr/share/freecad-daily/Mod")
+    sys.path.append("/usr/share/freecad-daily/Mod/Part")
+    # sys.path.append("/usr/share/freecad-daily/Mod/Draft")
+    # sys.path.append("/usr/share/freecad-daily/Mod/Draft/draftobjects")
 
 import FreeCAD  # noqa: E402
 import Import  # noqa: E402
@@ -45,7 +45,7 @@ import Part  # noqa: E402
 from BasicShapes import Shapes  # noqa: E402
 import TechDraw  # noqa: E402
 import Draft  # noqa: E402
-import clone  # noqa: E402
+# import clone  # noqa: E402
 
 
 def flatten_dimensions(data):
