@@ -30,25 +30,22 @@ if platform.system() == "Windows":
     sys.path.append(f"{freecad_path}\\Mod\\Arch")
 else:
     sys.path.insert(0, "/usr/lib/python3/dist-packages")
-    sys.path.append("/usr/lib/freecad-daily/lib")
-    sys.path.append("/usr/share/freecad-daily/Ext")
-    sys.path.append("/usr/share/freecad-daily/Mod")
-    sys.path.append("/usr/share/freecad-daily/Mod/Draft")
-    sys.path.append("/usr/share/freecad-daily/Mod/Part")
-    sys.path.append("/usr/share/freecad-daily/Mod/PartDesign")
-    sys.path.append("/usr/share/freecad-daily/Mod/Sketcher")
-    sys.path.append("/usr/share/freecad-daily/Mod/Arch")
+    sys.path.append("/usr/lib/freecad/lib")
+    sys.path.append("/usr/share/freecad/Ext")
+    sys.path.append("/usr/share/freecad/Mod")
+    sys.path.append("/usr/share/freecad/Mod/Part")
+    sys.path.append("/usr/share/freecad/Mod/Draft")
+    sys.path.append("/usr/share/freecad/Mod/Draft/draftobjects")
 
 import FreeCAD  # noqa: E402
 import Import  # noqa: E402
-import importOBJ  # noqa: E402
-# Bear in mind that the "import MeshPart" in importOBJ.py can break other programs, and must be commented
-
+import Mesh  # noqa: E402
 import Sketcher  # noqa: E402
 import Part  # noqa: E402
 from BasicShapes import Shapes  # noqa: E402
 import TechDraw  # noqa: E402
 import Draft  # noqa: E402
+import clone  # noqa: E402
 
 
 def flatten_dimensions(data):
@@ -192,7 +189,7 @@ class Builder:
                 for index, piece in enumerate(pieces_to_export):
                     piece.Label = f"core_part_{index}"
                 Import.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.step")
-                importOBJ.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.obj")
+                Mesh.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.obj")
 
             if save_files:
                 document.saveAs(f"{output_path}{os.path.sep}{project_name}.FCStd")
@@ -231,64 +228,64 @@ class Builder:
 
             return base_width, base_height
 
-        try:
-            project_name = f"{project_name}_core_gaps_FrontView".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-            geometrical_description = core_data['geometricalDescription']
+        # try:
+        project_name = f"{project_name}_core_gaps_FrontView".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+        geometrical_description = core_data['geometricalDescription']
 
-            close_file_after_finishing = False
-            if FreeCAD.ActiveDocument is None:
-                close_file_after_finishing = True
-                FreeCAD.newDocument(project_name)
+        close_file_after_finishing = False
+        if FreeCAD.ActiveDocument is None:
+            close_file_after_finishing = True
+            FreeCAD.newDocument(project_name)
 
-            document = FreeCAD.ActiveDocument
+        document = FreeCAD.ActiveDocument
 
-            pieces = self.get_core(project_name, geometrical_description, output_path, save_files=False, export_files=False)
+        pieces = self.get_core(project_name, geometrical_description, output_path, save_files=False, export_files=False)
 
-            margin = 35
+        margin = 35
 
-            base_width, base_height = calculate_total_dimensions(margin)
-            scale = 1000 / (1.25 * base_width)
+        base_width, base_height = calculate_total_dimensions(margin)
+        scale = 1000 / (1.25 * base_width)
 
-            projection_rotation = 180
-            for piece in geometrical_description:
-                if piece['type'] in ['half set', 'toroidal']: 
-                    dimensions = flatten_dimensions(piece['shape'])
+        projection_rotation = 180
+        for piece in geometrical_description:
+            if piece['type'] in ['half set', 'toroidal']: 
+                dimensions = flatten_dimensions(piece['shape'])
 
-                    if piece['shape']['family'] in ['efd']:
-                        projection_depth = -dimensions['C'] / 2 + dimensions['K'] + dimensions['F2'] / 2
-                    elif piece['shape']['family'] in ['epx', 'ep']:
-                        projection_depth = dimensions['C'] / 2 - dimensions['K']
-                    else:
-                        projection_depth = 0
+                if piece['shape']['family'] in ['efd']:
+                    projection_depth = -dimensions['C'] / 2 + dimensions['K'] + dimensions['F2'] / 2
+                elif piece['shape']['family'] in ['epx', 'ep']:
+                    projection_depth = dimensions['C'] / 2 - dimensions['K']
+                else:
+                    projection_depth = 0
 
-                    if piece['shape']['family'] in ['u', 'ur']:
-                        projection_rotation = 0
+                if piece['shape']['family'] in ['u', 'ur']:
+                    projection_rotation = 0
 
-            projection_depth *= scale
+        projection_depth *= scale
 
-            front_view = self.get_front_projection(pieces, margin, scale, base_height, base_width, projection_depth, projection_rotation)
-            if save_files:
-                document.saveAs(f"{output_path}/{project_name}.FCStd")
+        front_view = self.get_front_projection(pieces, margin, scale, base_height, base_width, projection_depth, projection_rotation)
+        if save_files:
+            document.saveAs(f"{output_path}/{project_name}.FCStd")
 
-            if colors is None:
-                colors = {
-                    "projection_color": "#000000",
-                    "dimension_color": "#000000"
-                }
-            front_view_file = self.add_dimensions_and_export_view(core_data, scale, base_height, base_width, front_view, project_name, margin, colors, save_files)
-            if save_files:
-                with open(f"{output_path}/{project_name}.svg", "w") as svgFile:
-                    svgFile.write(front_view_file)
-            if close_file_after_finishing:
-                FreeCAD.closeDocument(project_name)
-
-            return {"front_view": front_view_file}
-        except Exception as e:  # noqa: E722
-            print(e)
+        if colors is None:
+            colors = {
+                "projection_color": "#000000",
+                "dimension_color": "#000000"
+            }
+        front_view_file = self.add_dimensions_and_export_view(core_data, scale, base_height, base_width, front_view, project_name, margin, colors, save_files, pieces)
+        if save_files:
+            with open(f"{output_path}/{project_name}.svg", "w") as svgFile:
+                svgFile.write(front_view_file)
+        if close_file_after_finishing:
             FreeCAD.closeDocument(project_name)
-            return {"top_view": None, "front_view": None}
 
-    def add_dimensions_and_export_view(self, core_data, scale, base_height, base_width, view, project_name, margin, colors, save_files):
+        return {"front_view": front_view_file}
+        # except Exception as e:  # noqa: E722
+        #     print(e)
+        #     FreeCAD.closeDocument(project_name)
+        #     return {"top_view": None, "front_view": None}
+
+    def add_dimensions_and_export_view(self, core_data, scale, base_height, base_width, view, project_name, margin, colors, save_files, pieces):
         def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
             dimension_svg = ""
 
@@ -362,7 +359,20 @@ class Builder:
         svgFile_data = ""
         svgFile_data += head
         svgFile_data += projetion_head
-        svgFile_data += TechDraw.viewPartAsSvg(view).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+
+        aux = FreeCAD.ActiveDocument.addObject("Part::MultiFuse", "Fusion")
+        aux.Shapes = pieces
+        FreeCAD.ActiveDocument.recompute()
+
+        piece = Draft.scale(aux, FreeCAD.Vector(scale, scale, scale))
+        m = piece.Placement.Matrix
+        m.rotateZ(math.radians(90))
+        piece.Placement.Matrix = m
+        m = piece.Placement.Matrix
+        m.rotateY(math.radians(90))
+        piece.Placement.Matrix = m
+        svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+
         svgFile_data += projetion_tail
         geometrical_description = core_data['geometricalDescription']
 
@@ -557,7 +567,7 @@ class IPiece(metaclass=ABCMeta):
         document.recompute()
 
         sketch = document.getObject('Body').newObject('Sketcher::SketchObject', 'Sketch')
-        sketch.Support = (document.getObject('XY_Plane'), [''])
+        # sketch.Support = (document.getObject('XY_Plane'), [''])
         sketch.MapMode = 'FlatFace'
         document.recompute()
         return sketch
@@ -683,7 +693,7 @@ class IPiece(metaclass=ABCMeta):
             document.recompute()
             if export_files:
                 Import.export([plate], f"{self.output_path}/{project_name}.step")
-                importOBJ.export([plate], f"{self.output_path}/{project_name}.obj")
+                Mesh.export([plate], f"{self.output_path}/{project_name}.obj")
 
             if save_files:
                 document.saveAs(f"{self.output_path}/{project_name}.FCStd")
@@ -754,7 +764,7 @@ class IPiece(metaclass=ABCMeta):
 
             if export_files:
                 Import.export([piece], f"{self.output_path}/{project_name}.step")
-                importOBJ.export([piece], f"{self.output_path}/{project_name}.obj")
+                Mesh.export([piece], f"{self.output_path}/{project_name}.obj")
 
             if save_files:
                 document.saveAs(f"{self.output_path}/{project_name}.FCStd")
@@ -847,8 +857,8 @@ class IPiece(metaclass=ABCMeta):
         if save_files:
             document.saveAs(f"{self.output_path}/{project_name}.FCStd")
         if not error_in_piece:
-            top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors, save_files)
-            front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors, save_files)
+            top_view_file = self.add_dimensions_and_export_view(data, original_dimensions, top_view, project_name, margin, colors, save_files, piece)
+            front_view_file = self.add_dimensions_and_export_view(data, original_dimensions, front_view, project_name, margin, colors, save_files, piece)
 
         FreeCAD.closeDocument(project_name)
 
@@ -858,7 +868,7 @@ class IPiece(metaclass=ABCMeta):
             else {"top_view": top_view_file, "front_view": front_view_file}
         )
 
-    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
+    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files, piece):
         def calculate_total_dimensions():
             base_width = data['dimensions']['A'] + margin
             base_width += horizontal_offset
@@ -997,7 +1007,19 @@ class IPiece(metaclass=ABCMeta):
         svgFile_data = ""
         svgFile_data += head
         svgFile_data += projetion_head
-        svgFile_data += TechDraw.viewPartAsSvg(view).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+
+        if view.Name == "TopView":
+            m = piece.Placement.Matrix
+            m.rotateZ(math.radians(90))
+            piece.Placement.Matrix = m
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+        else:
+            m = piece.Placement.Matrix
+            m.rotateY(math.radians(90))
+            piece.Placement.Matrix = m
+            piece.Placement.move(FreeCAD.Vector(-dimensions["B"] / 2, 0, 0))
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+
         svgFile_data += projetion_tail
         if view.Name == "TopView":
             if "L" in dimensions and dimensions["L"] > 0:
@@ -1454,7 +1476,10 @@ class Pq(P):
         if "J" not in dimensions:
             dimensions["J"] = dimensions["F"] / 2
 
-        g_angle = math.asin(dimensions["G"] / dimensions["E"])
+        if "G" in dimensions:
+            g_angle = math.asin(dimensions["G"] / dimensions["E"])
+        else:
+            g_angle = math.asin((dimensions["E"] - ((dimensions["E"] - dimensions["F"]) / 2)) / dimensions["E"])
 
         top_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-dimensions["C"] / 2, dimensions["A"] / 2, 0), FreeCAD.Vector(dimensions["C"] / 2, dimensions["A"] / 2, 0)), False)
 
@@ -2773,7 +2798,7 @@ class Ur(IPiece):
         central_hole.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["C"] / 2, -dimensions["A"] / 2, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
         return central_hole
 
-    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
+    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files, piece):
         def calculate_total_dimensions():
             if view.Name == "TopView":
                 base_width = data['dimensions']['A'] + margin
@@ -2880,16 +2905,28 @@ class Ur(IPiece):
         svgFile_data = ""
         svgFile_data += head
         svgFile_data += projetion_head
-        svgFile_data += TechDraw.viewPartAsSvg(view).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+        if 'F' not in dimensions:
+            dimensions['F'] = dimensions['C']
+
+        if view.Name == "TopView":
+            m = piece.Placement.Matrix
+            m.rotateZ(math.radians(90))
+            piece.Placement.Matrix = m
+            piece.Placement.move(FreeCAD.Vector(-dimensions["A"] / 2 + dimensions["F"] / 2, 0, 0))
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+        else:
+            m = piece.Placement.Matrix
+            m.rotateY(math.radians(90))
+            piece.Placement.Matrix = m
+            piece.Placement.move(FreeCAD.Vector(-dimensions["B"] / 2, 0, 0))
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+
         svgFile_data += projetion_tail
         if 'F' not in original_dimensions:
             original_dimensions['F'] = original_dimensions['C']
 
         if 'E' not in original_dimensions:
             original_dimensions['E'] = original_dimensions['A'] - original_dimensions['F'] - original_dimensions['H']
-
-        if 'F' not in dimensions:
-            dimensions['F'] = dimensions['C']
 
         if 'E' not in dimensions:
             dimensions['E'] = dimensions['A'] - dimensions['F'] - dimensions['H']
@@ -3141,7 +3178,7 @@ class Ut(IPiece):
 
         return front_view
 
-    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
+    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files, piece):
         def calculate_total_dimensions():
             if view.Name == "TopView":
                 base_width = data['dimensions']['A'] + margin
@@ -3244,7 +3281,18 @@ class Ut(IPiece):
         svgFile_data = ""
         svgFile_data += head
         svgFile_data += projetion_head
-        svgFile_data += TechDraw.viewPartAsSvg(view).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+
+        if view.Name == "TopView":
+            m = piece.Placement.Matrix
+            m.rotateZ(math.radians(90))
+            piece.Placement.Matrix = m
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+        else:
+            m = piece.Placement.Matrix
+            m.rotateY(math.radians(90))
+            piece.Placement.Matrix = m
+            piece.Placement.move(FreeCAD.Vector(-dimensions["B"], 0, 0))
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
         svgFile_data += projetion_tail
         if view.Name == "TopView":
             if "C" in dimensions and dimensions["C"] > 0:
@@ -3408,7 +3456,7 @@ class T(IPiece):
 
         return section_front_view
 
-    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files):
+    def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files, piece):
         def calculate_total_dimensions():
             if view.Name == "TopView":
                 base_width = data['dimensions']['A'] + margin
@@ -3500,7 +3548,18 @@ class T(IPiece):
         svgFile_data = ""
         svgFile_data += head
         svgFile_data += projetion_head
-        svgFile_data += TechDraw.viewPartAsSvg(view).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+
+        if view.Name == "TopView":
+            m = piece.Placement.Matrix
+            m.rotateZ(math.radians(90))
+            piece.Placement.Matrix = m
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+        else:
+            m = piece.Placement.Matrix
+            m.rotateY(math.radians(90))
+            piece.Placement.Matrix = m
+            piece.Placement.move(FreeCAD.Vector(-dimensions["B"] / 2, 0, 0))
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
         svgFile_data += projetion_tail
         if view.Name == "TopView":
             svgFile_data += create_dimension(starting_coordinates=[-dimensions['B'] / 2, 0],

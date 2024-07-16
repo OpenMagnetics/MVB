@@ -1,1 +1,2 @@
 numpy
+dist/pymkf-0.9-cp310-cp310-manylinux_2_35_x86_64.whl

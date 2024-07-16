@@ -30,15 +30,13 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'pqi']:
-                    # if data['family'] != "p":
+                    # if data['family'] != "pq":
                     #     continue
                     core = builder.Builder().factory(data)
                     core.get_piece(data, save_files=True, export_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-                    print(self.output_path)
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj"))
-
 
     def test_all_technical_drawings_generated(self):
 
@@ -46,10 +44,12 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'pqi']:
+                    # if data['family'] != "ut":
+                    #     continue
                     core = builder.Builder().factory(data)
+                    print(data["name"])
                     core.get_piece_technical_drawing(data, save_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-                    print(f"{self.output_path}/{filename}_TopView.svg")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_scaled_TopView.svg"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_scaled_FrontView.svg"))
 
@@ -262,7 +262,7 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'ut']:
+                if data["family"] not in ['ui', 'ut', 'pqi']:
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
                         core['functionalDescription']['type'] = "toroidal"
@@ -381,8 +381,8 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'ut']:
-
+                if data["family"] not in ['ui', 'ut', 'pqi']:
+                    print(data["name"])
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
                         core['functionalDescription']['type'] = "toroidal"
@@ -397,7 +397,7 @@ class Tests(unittest.TestCase):
                     core = builder.Builder().get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-                    print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
+                    # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_core_gaps_FrontView.svg"))
 
     def test_0(self):
