@@ -4,19 +4,19 @@ import math
 import os
 import json
 from abc import ABCMeta, abstractmethod
-
-file_dir = os.path.dirname(__file__)
-sys.path.append(file_dir)
-
 import utils
 import copy
 import pathlib
 import platform
 
+file_dir = os.path.dirname(__file__)
+sys.path.append(file_dir)
+
+
 if platform.system() == "Windows":
-    if os.path.exists( f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 0.21"):
+    if os.path.exists(f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 0.21"):
         freecad_path = f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 0.21"
-    elif os.path.exists( f"{os.environ['ProgramFiles']}\\FreeCAD 0.21"):
+    elif os.path.exists(f"{os.environ['ProgramFiles']}\\FreeCAD 0.21"):
         freecad_path = f"{os.environ['ProgramFiles']}\\FreeCAD 0.21"
 
     sys.path.insert(0, f"{freecad_path}\\bin\\Lib\\site-packages")
@@ -29,14 +29,16 @@ if platform.system() == "Windows":
     sys.path.append(f"{freecad_path}\\Mod\\Sketcher")
     sys.path.append(f"{freecad_path}\\Mod\\Arch")
 else:
+    sys.path.insert(0, "/usr/lib/python3/dist-packages")
     sys.path.append("/usr/lib/freecad-daily/lib")
     sys.path.append("/usr/share/freecad-daily/Ext")
     sys.path.append("/usr/share/freecad-daily/Mod")
     sys.path.append("/usr/share/freecad-daily/Mod/Part")
-    sys.path.append("/usr/share/freecad-daily/Mod/Draft/draftobjects")
     sys.path.append("/usr/share/freecad-daily/Mod/Draft")
+    sys.path.append("/usr/share/freecad-daily/Mod/Draft/draftobjects")
     # Comment line 31 from /usr/share/freecad-daily/Mod/Draft/draftutils/params.py if it crashes at import
     # import Arch_rc
+
 
 import FreeCAD  # noqa: E402
 import Import  # noqa: E402
@@ -361,9 +363,12 @@ class Builder:
         svgFile_data += head
         svgFile_data += projetion_head
 
-        aux = FreeCAD.ActiveDocument.addObject("Part::MultiFuse", "Fusion")
-        aux.Shapes = pieces
-        FreeCAD.ActiveDocument.recompute()
+        if len(pieces) > 1:
+            aux = FreeCAD.ActiveDocument.addObject("Part::MultiFuse", "Fusion")
+            aux.Shapes = pieces
+            FreeCAD.ActiveDocument.recompute()
+        else:
+            aux = pieces[0]
 
         piece = Draft.scale(aux, FreeCAD.Vector(scale, scale, scale))
         m = piece.Placement.Matrix
@@ -396,7 +401,10 @@ class Builder:
                     break
 
         grouped_gaps_per_column = {}
+
         for gap in core_data['functionalDescription']['gapping']:
+            if gap['coordinates'] is None:
+                continue
             if (
                 gap['coordinates'][0],
                 gap['coordinates'][2],
@@ -425,6 +433,9 @@ class Builder:
                                                      dimension_type="DistanceY",
                                                      dimension_label=dimension_label,
                                                      label_offset=min(base_width / 2, gap['sectionDimensions'][0] / 2 * scale * 1000 + horizontal_offset_gaps))
+
+                if gap['sectionDimensions'] is None:
+                    continue
 
                 if gap['type'] in ["subtractive", "residual"]:
                     if gap['length'] < 0.0001:
@@ -501,11 +512,14 @@ class Builder:
 
         # cloned_piece = Draft.make_clone(pieces, forcedraft=True)
 
-        aux = document.addObject("Part::MultiFuse", "Fusion")
-        aux.Shapes = pieces
-        document.recompute()
-        cloned_piece = Draft.scale(aux, FreeCAD.Vector(scale, scale, scale))
+        if len(pieces) > 1:
+            aux = document.addObject("Part::MultiFuse", "Fusion")
+            aux.Shapes = pieces
+            document.recompute()
+        else:
+            aux = pieces[0]
 
+        cloned_piece = Draft.scale(aux, FreeCAD.Vector(scale, scale, scale))
         # cloned_piece.Scale = FreeCAD.Vector(scale, scale, scale)
         FreeCAD.ActiveDocument.recompute()
 

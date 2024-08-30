@@ -94,7 +94,7 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'ut']:
+                if data["family"] not in ['ui', 'ut', 'pqi']:
 
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
@@ -158,7 +158,7 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'ut']:
+                if data["family"] not in ['ui', 'ut', 'pqi']:
 
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
@@ -206,7 +206,7 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'ut']:
+                if data["family"] not in ['ui', 'ut', 'pqi']:
 
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
@@ -220,6 +220,7 @@ class Tests(unittest.TestCase):
                     else:
                         gapping = []
                         core_datum = PyMKF.calculate_core_data(core, False)
+                        core_datum['processedDescription'] = PyMKF.calculate_core_processed_description(core)
                         for column_index, column in enumerate(core_datum['processedDescription']['columns']):
                             aux = copy.deepcopy(dummyGapping[column_index])
                             aux['coordinates'] = column['coordinates']
@@ -320,7 +321,7 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'ut']:
+                if data["family"] not in ['ui', 'ut', 'pqi']:
 
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
@@ -384,7 +385,8 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'ut', 'pqi']:
+                # if data["family"] not in ['ui', 'ut', 'pqi']:
+                if data["family"] in ['p']:
                     print(data["name"])
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
