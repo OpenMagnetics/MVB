@@ -29,13 +29,14 @@ if platform.system() == "Windows":
     sys.path.append(f"{freecad_path}\\Mod\\Sketcher")
     sys.path.append(f"{freecad_path}\\Mod\\Arch")
 else:
-    sys.path.insert(0, "/usr/lib/python3/dist-packages")
     sys.path.append("/usr/lib/freecad-daily/lib")
     sys.path.append("/usr/share/freecad-daily/Ext")
     sys.path.append("/usr/share/freecad-daily/Mod")
     sys.path.append("/usr/share/freecad-daily/Mod/Part")
-    # sys.path.append("/usr/share/freecad-daily/Mod/Draft")
-    # sys.path.append("/usr/share/freecad-daily/Mod/Draft/draftobjects")
+    sys.path.append("/usr/share/freecad-daily/Mod/Draft/draftobjects")
+    sys.path.append("/usr/share/freecad-daily/Mod/Draft")
+    # Comment line 31 from /usr/share/freecad-daily/Mod/Draft/draftutils/params.py if it crashes at import
+    # import Arch_rc
 
 import FreeCAD  # noqa: E402
 import Import  # noqa: E402
@@ -45,7 +46,7 @@ import Part  # noqa: E402
 from BasicShapes import Shapes  # noqa: E402
 import TechDraw  # noqa: E402
 import Draft  # noqa: E402
-# import clone  # noqa: E402
+import clone  # noqa: E402
 
 
 def flatten_dimensions(data):
@@ -371,7 +372,7 @@ class Builder:
         m = piece.Placement.Matrix
         m.rotateY(math.radians(90))
         piece.Placement.Matrix = m
-        svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+        svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
 
         svgFile_data += projetion_tail
         geometrical_description = core_data['geometricalDescription']
@@ -498,8 +499,14 @@ class Builder:
         page.Template = template
         document.recompute()
 
-        cloned_piece = Draft.make_clone(pieces, forcedraft=True)
-        cloned_piece.Scale = FreeCAD.Vector(scale, scale, scale)
+        # cloned_piece = Draft.make_clone(pieces, forcedraft=True)
+
+        aux = document.addObject("Part::MultiFuse", "Fusion")
+        aux.Shapes = pieces
+        document.recompute()
+        cloned_piece = Draft.scale(aux, FreeCAD.Vector(scale, scale, scale))
+
+        # cloned_piece.Scale = FreeCAD.Vector(scale, scale, scale)
         FreeCAD.ActiveDocument.recompute()
 
         top_view = document.addObject('TechDraw::DrawViewPart', 'TopView')
@@ -1012,13 +1019,13 @@ class IPiece(metaclass=ABCMeta):
             m = piece.Placement.Matrix
             m.rotateZ(math.radians(90))
             piece.Placement.Matrix = m
-            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
         else:
             m = piece.Placement.Matrix
             m.rotateY(math.radians(90))
             piece.Placement.Matrix = m
             piece.Placement.move(FreeCAD.Vector(-dimensions["B"] / 2, 0, 0))
-            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
 
         svgFile_data += projetion_tail
         if view.Name == "TopView":
@@ -2913,13 +2920,13 @@ class Ur(IPiece):
             m.rotateZ(math.radians(90))
             piece.Placement.Matrix = m
             piece.Placement.move(FreeCAD.Vector(-dimensions["A"] / 2 + dimensions["F"] / 2, 0, 0))
-            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
         else:
             m = piece.Placement.Matrix
             m.rotateY(math.radians(90))
             piece.Placement.Matrix = m
             piece.Placement.move(FreeCAD.Vector(-dimensions["B"] / 2, 0, 0))
-            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
 
         svgFile_data += projetion_tail
         if 'F' not in original_dimensions:
@@ -3286,13 +3293,13 @@ class Ut(IPiece):
             m = piece.Placement.Matrix
             m.rotateZ(math.radians(90))
             piece.Placement.Matrix = m
-            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
         else:
             m = piece.Placement.Matrix
             m.rotateY(math.radians(90))
             piece.Placement.Matrix = m
             piece.Placement.move(FreeCAD.Vector(-dimensions["B"], 0, 0))
-            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
         svgFile_data += projetion_tail
         if view.Name == "TopView":
             if "C" in dimensions and dimensions["C"] > 0:
@@ -3553,13 +3560,13 @@ class T(IPiece):
             m = piece.Placement.Matrix
             m.rotateZ(math.radians(90))
             piece.Placement.Matrix = m
-            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 0., 1.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
         else:
             m = piece.Placement.Matrix
             m.rotateY(math.radians(90))
             piece.Placement.Matrix = m
             piece.Placement.move(FreeCAD.Vector(-dimensions["B"] / 2, 0, 0))
-            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color'])
+            svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
         svgFile_data += projetion_tail
         if view.Name == "TopView":
             svgFile_data += create_dimension(starting_coordinates=[-dimensions['B'] / 2, 0],

@@ -39,7 +39,10 @@ class Tests(unittest.TestCase):
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj"))
 
     def test_all_technical_drawings_generated(self):
-
+        colors = {
+            "projection_color": "#d4d4d4",
+            "dimension_color": "#d4d4d4"
+        }
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
@@ -48,7 +51,7 @@ class Tests(unittest.TestCase):
                     #     continue
                     core = builder.Builder().factory(data)
                     print(data["name"])
-                    core.get_piece_technical_drawing(data, save_files=True)
+                    core.get_piece_technical_drawing(data, colors=colors, save_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_scaled_TopView.svg"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_scaled_FrontView.svg"))
