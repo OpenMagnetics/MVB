@@ -14,7 +14,11 @@ sys.path.append(file_dir)
 
 
 if platform.system() == "Windows":
-    if os.path.exists(f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 0.21"):
+    if os.path.exists(f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 1.0"):
+        freecad_path = f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 1.0"
+    elif os.path.exists(f"{os.environ['ProgramFiles']}\\FreeCAD 1.0"):
+        freecad_path = f"{os.environ['ProgramFiles']}\\FreeCAD 1.0"
+    elif os.path.exists(f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 0.21"):
         freecad_path = f"{os.getenv('LOCALAPPDATA')}\\Programs\\FreeCAD 0.21"
     elif os.path.exists(f"{os.environ['ProgramFiles']}\\FreeCAD 0.21"):
         freecad_path = f"{os.environ['ProgramFiles']}\\FreeCAD 0.21"
@@ -48,7 +52,7 @@ import Part  # noqa: E402
 from BasicShapes import Shapes  # noqa: E402
 import TechDraw  # noqa: E402
 import Draft  # noqa: E402
-import clone  # noqa: E402
+# import clone  # noqa: E402
 
 
 def flatten_dimensions(data):
@@ -275,9 +279,17 @@ class Builder:
                 "projection_color": "#000000",
                 "dimension_color": "#000000"
             }
-        front_view_file = self.add_dimensions_and_export_view(core_data, scale, base_height, base_width, front_view, project_name, margin, colors, save_files, pieces)
+
+        core = FreeCAD.ActiveDocument.addObject("Part::MultiFuse", "Core")
+        core.Shapes = pieces
+        FreeCAD.ActiveDocument.recompute()
+
+        core = self.cut_piece_in_half(core)
+
+        front_view_file = self.add_dimensions_and_export_view(core_data, scale, base_height, base_width, front_view, project_name, margin, colors, save_files, core)
         if save_files:
-            with open(f"{output_path}/{project_name}.svg", "w") as svgFile:
+            document.saveAs(f"{output_path}/{project_name}.FCStd")
+            with open(f"{output_path}/{project_name}.svg", "w", encoding="utf-8") as svgFile:
                 svgFile.write(front_view_file)
         if close_file_after_finishing:
             FreeCAD.closeDocument(project_name)
@@ -288,7 +300,25 @@ class Builder:
         #     FreeCAD.closeDocument(project_name)
         #     return {"top_view": None, "front_view": None}
 
-    def add_dimensions_and_export_view(self, core_data, scale, base_height, base_width, view, project_name, margin, colors, save_files, pieces):
+    def cut_piece_in_half(self, piece):
+        document = FreeCAD.ActiveDocument
+
+        half_volume = document.addObject("Part::Box", "half_volume")
+        document.recompute()
+        size = 100000
+        half_volume.Length = size
+        half_volume.Width = size
+        half_volume.Height = size
+        half_volume.Placement = FreeCAD.Placement(FreeCAD.Vector(-size, -size / 2, -size / 2), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        piece_cut = document.addObject("Part::Cut", "Core")
+        piece_cut.Base = piece
+        piece_cut.Tool = half_volume
+        document.recompute()
+
+        return piece_cut
+
+    def add_dimensions_and_export_view(self, core_data, scale, base_height, base_width, view, project_name, margin, colors, save_files, core):
         def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
             dimension_svg = ""
 
@@ -363,20 +393,18 @@ class Builder:
         svgFile_data += head
         svgFile_data += projetion_head
 
-        if len(pieces) > 1:
-            aux = FreeCAD.ActiveDocument.addObject("Part::MultiFuse", "Fusion")
-            aux.Shapes = pieces
-            FreeCAD.ActiveDocument.recompute()
-        else:
-            aux = pieces[0]
+        piece = Draft.scale(core, FreeCAD.Vector(scale, scale, scale))
 
-        piece = Draft.scale(aux, FreeCAD.Vector(scale, scale, scale))
         m = piece.Placement.Matrix
-        m.rotateZ(math.radians(90))
+        if core_data['functionalDescription']['shape']['family'] in ['u', 'ur']:
+            m.rotateZ(math.radians(90))
+        else:
+            m.rotateZ(math.radians(-90))
         piece.Placement.Matrix = m
         m = piece.Placement.Matrix
         m.rotateY(math.radians(90))
         piece.Placement.Matrix = m
+
         svgFile_data += TechDraw.projectToSVG(piece.Shape, FreeCAD.Vector(0., 1., 0.)).replace("><", ">\n<").replace("<", "    <").replace("stroke-width=\"0.7\"", f"stroke-width=\"{projection_line_thickness}\"").replace("#000000", colors['projection_color']).replace("rgb(0, 0, 0)", colors['projection_color'])
 
         svgFile_data += projetion_tail
@@ -385,7 +413,7 @@ class Builder:
         center_offset = 0
         if (len(core_data['processedDescription']['columns']) == 2 and core_data['processedDescription']['columns'][1]['coordinates'][2] == 0):
             for piece in geometrical_description:
-                if piece['type'] == "half set":
+                if piece['type'] == "half set" and piece['shape']['family'] not in ['u', 'ur']:
                     dimensions = flatten_dimensions(piece['shape'])
                     if 'F' in dimensions and dimensions['F'] > 0:
                         center_offset = -dimensions['A'] / 2 + dimensions['F'] / 2
@@ -2282,12 +2310,13 @@ class Ep(E):
         document = FreeCAD.ActiveDocument
 
         original_tool = document.addObject("Part::Box", "tool")
-        original_tool.Length = dimensions["A"]
-        x_coordinate = -dimensions["A"] / 2
+        original_tool.Length = dimensions["C"]
+        x_coordinate = -dimensions["C"] + dimensions["K"] 
+
         if machining['coordinates'][0] == 0 and machining['coordinates'][2] == 0:
             original_tool.Width = dimensions["F"]
             original_tool.Length = dimensions["F"]
-            x_coordinate = (dimensions["C"] / 2 - dimensions["K"] - dimensions["F"] / 2)
+            x_coordinate = -dimensions["F"] / 2
             y_coordinate = -dimensions["F"] / 2
         elif machining['coordinates'][0] != 0 and machining['coordinates'][2] == 0:
             original_tool.Width = dimensions["A"] / 2
@@ -2309,14 +2338,14 @@ class Ep(E):
             central_column_width = dimensions["F"] * 1.001
             central_column_tool.Radius = central_column_width / 2
             central_column_tool.Height = machining['length'] * 1000
-            central_column_tool.Placement = FreeCAD.Placement(FreeCAD.Vector((dimensions["C"] / 2 - dimensions["K"]), 0, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+            central_column_tool.Placement = FreeCAD.Placement(FreeCAD.Vector(0, 0, (machining['coordinates'][1] - machining['length'] / 2) * 1000), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
 
-            tool = document.addObject("Part::Cut", "machined_piece")
+            tool = document.addObject("Part::Cut", "machined_piece_with_central_column")
             tool.Base = original_tool
             tool.Tool = central_column_tool
             document.recompute()
 
-        machined_piece = document.addObject("Part::Cut", "machined_piece")
+        machined_piece = document.addObject("Part::Cut", "machined_piece_with_lateral_gap")
         machined_piece.Base = piece
         machined_piece.Tool = tool
         document.recompute()
@@ -2327,7 +2356,7 @@ class Ep(E):
         # movement to center column
         dimensions = data["dimensions"]
 
-        piece.Placement.move(FreeCAD.Vector(-dimensions["F"] / 2,
+        piece.Placement.move(FreeCAD.Vector(-dimensions["C"] / 2 + dimensions["K"],
                                             0,
                                             0))
         return piece

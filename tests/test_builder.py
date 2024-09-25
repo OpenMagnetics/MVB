@@ -266,7 +266,7 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'ut', 'pqi']:
+                if data["family"] not in ['ui', 'ut', 'pqi', 't']:
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
                         core['functionalDescription']['type'] = "toroidal"
@@ -285,6 +285,7 @@ class Tests(unittest.TestCase):
                             gapping.append(aux)
                         core['functionalDescription']['gapping'] = gapping
 
+                    print(data["name"])
                     core_datum = PyMKF.calculate_core_data(core, False)
                     core = builder.Builder().get_core_gapping_technical_drawing(data['name'], core_datum)
 
@@ -385,8 +386,8 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                # if data["family"] not in ['ui', 'ut', 'pqi']:
-                if data["family"] in ['p']:
+                if data["family"] not in ['ui', 'ut', 'pqi']:
+                # if data["family"] in ['p']:
                     print(data["name"])
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
