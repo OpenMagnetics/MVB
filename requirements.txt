@@ -1,2 +1,2 @@
 numpy
-dist/pymkf-0.9-cp311-cp311-win_amd64.whl
+PyMKF

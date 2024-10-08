@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "OpenMagneticsVirtualBuilder"
+version = "0.5.4"
+description = 'This project hold all the Python scripts needed to produce Freecad related files from any magnetic defined following MAL schemas. This files include 2D and 3D models, meshes, and technical drawings.'
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = []
+authors = [
+  { name="Alfonso Martinez", email="Alfonso_VII@hotmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "numpy",
+  "PyMKF",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/OpenMagneticsVirtualBuilder"]
+
+[project.urls]
+Homepage = "https://openmagnetics.com"
+Repository = "https://github.com/OpenMagnetics/MVB"
+Contact = "https://www.linkedin.com/in/alfonso-martinez-de-la-torre/"
