@@ -136,7 +136,7 @@ class Builder:
         document.recompute()
         return spacer
 
-    def get_core(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../output/', save_files=True, export_files=True):
+    def get_core(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
         try:
             pieces_to_export = []
             project_name = f"{project_name}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -217,7 +217,7 @@ class Builder:
                 FreeCAD.closeDocument(project_name)
             return None, None
 
-    def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../output/', save_files=True, export_files=True):
+    def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
         def calculate_total_dimensions(margin):
             base_width = 0
             base_height = 0
@@ -594,7 +594,7 @@ class Builder:
 
 class IPiece(metaclass=ABCMeta):
     def __init__(self):
-        self.output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../output/'
+        self.output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
 
     def set_output_path(self, output_path):
         self.output_path = output_path
