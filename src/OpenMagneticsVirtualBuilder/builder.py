@@ -785,7 +785,7 @@ class IPiece(metaclass=ABCMeta):
             base = self.extrude_sketch(
                 sketch=sketch,
                 part_name=part_name,
-                height=data["dimensions"]["l2"] if data["family"] != 't' else data["dimensions"]["C"] #TODO: Check this for toroidal
+                height=data["dimensions"]["H1"] if data["family"] != 't' else data["dimensions"]["C"] #TODO: this does not apply to toroid. so remove?
             )
 
             document.recompute()
@@ -809,7 +809,9 @@ class IPiece(metaclass=ABCMeta):
 
             document.recompute()
 
-            if data["family"] != 't':
+            if data["family"] == 'pq':
+                piece.Placement.move(FreeCAD.Vector(0, 0, -data["dimensions"]["H1"]/2))
+            elif data["family"] != 't':
                 piece.Placement.move(FreeCAD.Vector(0, 0, -data["dimensions"]["l2"]/2))
             else:
                 piece.Placement.move(FreeCAD.Vector(0, 0, -data["dimensions"]["C"] / 2))
@@ -1593,6 +1595,44 @@ class P(IPiece):
 
 
 class Pq(P):
+    def get_negative_bobbin(self, dimensions):
+        document = FreeCAD.ActiveDocument
+
+        bobbin_core_window_cyl = document.addObject("Part::Cylinder", "core_column_cube")
+        bobbin_core_window_cyl.Radius = dimensions["D3"] /2
+        bobbin_core_window_cyl.Height = dimensions["H1"]
+        # bobbin_core_window_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["c"] / 2, -dimensions["f"] / 2, 0), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+        document.recompute()
+
+        winding_window_cyl = document.addObject("Part::Cylinder", "bobbin_window_cube")
+        winding_window_cyl.Radius = dimensions["D1"] / 2
+        winding_window_cyl.Height = dimensions["H2"]
+        winding_window_cyl.Placement = FreeCAD.Placement(FreeCAD.Vector(0, 0, (dimensions["H1"] - dimensions["H2"])/2), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+
+        central_column_cyl = document.addObject("Part::Cylinder", "bobbin_wall_cube")
+        central_column_cyl.Radius = dimensions["D2"] / 2
+        central_column_cyl.Height = dimensions["H2"]
+        central_column_cyl.Placement = FreeCAD.Placement(FreeCAD.Vector(0, 0, (dimensions["H1"] - dimensions["H2"])/2), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+        negative_winding_window = document.addObject("Part::Cut", "negative_winding_window")
+        negative_winding_window.Base = winding_window_cyl
+        negative_winding_window.Tool = central_column_cyl
+        document.recompute()
+
+        # Fuse the two shapes above 
+        winding_window_aux = document.addObject("Part::MultiFuse", "Fusion")
+        winding_window_aux.Shapes = [negative_winding_window, bobbin_core_window_cyl]
+        document.recompute()
+
+        return winding_window_aux
+
+    def get_bobbin_base(self, data, sketch):
+        dimensions = data["dimensions"]
+        d1 = dimensions["D1"] / 2
+
+        central_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["D1"] / 2), False)
+
     def get_dimensions_and_subtypes(self):
         return {1: ["A", "B", "C", "D", "E", "F", "G"]} 
 
@@ -2023,7 +2063,6 @@ class E(IPiece):
 
         return winding_window_aux
 
-
     def get_bobbin_base(self, data, sketch):
         dimensions = data["dimensions"]
         e = dimensions["e"] / 2
@@ -2045,7 +2084,6 @@ class E(IPiece):
         sketch.addConstraint(Sketcher.Constraint('Vertical', left_line))
         sketch.addConstraint(Sketcher.Constraint('Horizontal', top_line))
         sketch.addConstraint(Sketcher.Constraint('Horizontal', bottom_line))
-
 
     def get_shape_base(self, data, sketch):
         dimensions = data["dimensions"]
