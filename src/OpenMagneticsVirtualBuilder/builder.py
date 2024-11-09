@@ -34,15 +34,32 @@ if platform.system() == "Windows":
     sys.path.append(f"{freecad_path}\\Mod\\Sketcher")
     sys.path.append(f"{freecad_path}\\Mod\\Arch")
 else:
+    freecad_name = None
+    if os.path.exists("/usr/lib/freecad-daily"):
+        freecad_name = "freecad-daily"
+    elif os.path.exists("/usr/lib/freecad"):
+        freecad_name = "freecad"
+    
     sys.path.insert(0, "/usr/lib/python3/dist-packages")
-    sys.path.append("/usr/lib/freecad-daily/lib")
-    sys.path.append("/usr/share/freecad-daily/Ext")
-    sys.path.append("/usr/share/freecad-daily/Mod")
-    sys.path.append("/usr/share/freecad-daily/Mod/Part")
-    sys.path.append("/usr/share/freecad-daily/Mod/Draft")
-    sys.path.append("/usr/share/freecad-daily/Mod/Draft/draftobjects")
-    # Comment line 31 from /usr/share/freecad-daily/Mod/Draft/draftutils/params.py if it crashes at import
-    # import Arch_rc
+
+    if freecad_name is not None:
+        sys.path.append(f"/usr/lib/{freecad_name}/lib")
+        sys.path.append(f"/usr/share/{freecad_name}/Ext")
+        sys.path.append(f"/usr/share/{freecad_name}/Mod")
+        sys.path.append(f"/usr/share/{freecad_name}/Mod/Part")
+        sys.path.append(f"/usr/share/{freecad_name}/Mod/Draft")
+        sys.path.append(f"/usr/share/{freecad_name}/Mod/Draft/draftobjects")
+        # Comment line 31 from /usr/share/freecad-daily/Mod/Draft/draftutils/params.py if it crashes at import
+    else:
+        sys.path.append("/usr/local/lib")
+        sys.path.append("/usr/local/Ext")
+        sys.path.append("/usr/local/Mod")
+        sys.path.append("/usr/local/Mod/Part")
+        sys.path.append("/usr/local/Mod/Draft")
+        sys.path.append("/usr/local/Mod/Draft/draftobjects")
+
+        # Comment line 31 from /usr/local/Mod/Draft/draftutils/params.py if it crashes at import
+        # import Arch_rc
 
 
 import FreeCAD  # noqa: E402
