@@ -172,20 +172,32 @@ class Builder:
                     spacer = self.get_spacer(geometrical_part)
                     pieces_to_export.append(spacer)
                  
-                elif geometrical_part['type'] in ['half set', 'toroidal', 'bobbin']:
+                elif geometrical_part['type'] == 'bobbin':
                     shape_data = geometrical_part['shape']
                     part_builder = Builder().factory(shape_data)
-                    if geometrical_part['type'] == 'bobbin':
-                        piece = part_builder.get_bobbin(data=copy.deepcopy(shape_data),
+                    bobbin = part_builder.get_bobbin(data=copy.deepcopy(shape_data),
                                                     name=f"Bobbin_{index}",
                                                     save_files=False,
-                                                    export_files=False)                    
-                    else:
-                        piece = part_builder.get_piece(data=copy.deepcopy(shape_data),
+                                                    export_files=False)   
+                    m = piece.Placement.Matrix
+                    m.rotateX(geometrical_part['rotation'][2])
+                    m.rotateY(geometrical_part['rotation'][0])
+                    m.rotateZ(geometrical_part['rotation'][1])
+                    bobbin.Placement.Matrix = m
+                    document.recompute()
+                    bobbin.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
+                                                        geometrical_part['coordinates'][0] * 1000,
+                                                        geometrical_part['coordinates'][1] * 1000))
+                    pieces_to_export.append(bobbin)
+
+                elif geometrical_part['type'] in ['half set', 'toroidal']:
+                    shape_data = geometrical_part['shape']
+                    part_builder = Builder().factory(shape_data)
+                    piece = part_builder.get_piece(data=copy.deepcopy(shape_data),
                                                    name=f"Piece_{index}",
                                                    save_files=False,
                                                    export_files=False)
-
+    
                     m = piece.Placement.Matrix
                     m.rotateX(geometrical_part['rotation'][2])
                     m.rotateY(geometrical_part['rotation'][0])
