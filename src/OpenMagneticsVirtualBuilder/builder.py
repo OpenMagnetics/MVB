@@ -781,11 +781,19 @@ class IPiece(metaclass=ABCMeta):
             document.recompute()
 
             part_name = "bobbin"
-
+            if data["family"] == 'e':
+                height = data["dimensions"]["l2"]
+            if data["family"] == 'pq':
+                height = data["dimensions"]["H1"]
+            elif data["family"] == 't':
+                height = data["dimensions"]["C"] 
+            else:
+                height = data["dimensions"]["B"]
+            
             base = self.extrude_sketch(
                 sketch=sketch,
                 part_name=part_name,
-                height=data["dimensions"]["H1"] if data["family"] != 't' else data["dimensions"]["C"] #TODO: this does not apply to toroid. so remove?
+                height=height
             )
 
             document.recompute()
