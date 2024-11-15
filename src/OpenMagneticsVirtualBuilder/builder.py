@@ -131,6 +131,107 @@ class Builder:
             for shaper in self.shapers
         }
 
+    def get_magnetic(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
+        try:
+            pieces_to_export = []
+            project_name = f"{project_name}_magnetic".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            os.makedirs(output_path, exist_ok=True)
+
+            close_file_after_finishing = False
+            if FreeCAD.ActiveDocument is None:
+                close_file_after_finishing = True
+                FreeCAD.newDocument(project_name)
+
+            document = FreeCAD.ActiveDocument
+
+            for index, geometrical_part in enumerate(geometrical_description):
+                if geometrical_part['type'] == 'spacer':
+                    spacer = self.get_spacer(geometrical_part)
+                    pieces_to_export.append(spacer)
+                 
+                elif geometrical_part['type'] == 'bobbin':
+                    shape_data = geometrical_part['shape']
+                    part_builder = Builder().factory(shape_data)
+                    bobbin = part_builder.get_bobbin(data=copy.deepcopy(shape_data),
+                                                    name=f"Bobbin_{index}",
+                                                    save_files=False,
+                                                    export_files=False)   
+                    m = bobbin.Placement.Matrix
+                    m.rotateX(geometrical_part['rotation'][2])
+                    m.rotateY(geometrical_part['rotation'][0])
+                    m.rotateZ(geometrical_part['rotation'][1])
+                    bobbin.Placement.Matrix = m
+                    document.recompute()
+                    bobbin.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
+                                                        geometrical_part['coordinates'][0] * 1000,
+                                                        geometrical_part['coordinates'][1] * 1000))
+                    pieces_to_export.append(bobbin)
+
+                elif geometrical_part['type'] in ['half set', 'toroidal']:
+                    shape_data = geometrical_part['shape']
+                    part_builder = Builder().factory(shape_data)
+                    piece = part_builder.get_piece(data=copy.deepcopy(shape_data),
+                                                   name=f"Piece_{index}",
+                                                   save_files=False,
+                                                   export_files=False)
+    
+                    m = piece.Placement.Matrix
+                    m.rotateX(geometrical_part['rotation'][2])
+                    m.rotateY(geometrical_part['rotation'][0])
+                    m.rotateZ(geometrical_part['rotation'][1])
+                    piece.Placement.Matrix = m
+                    document.recompute()
+
+                    if 'machining' in geometrical_part and geometrical_part['machining'] is not None:
+                        for machining in geometrical_part['machining']:
+                            piece = part_builder.apply_machining(piece=piece,
+                                                                 machining=machining,
+                                                                 dimensions=flatten_dimensions(shape_data))
+                        document.recompute()
+
+                    piece.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
+                                                        geometrical_part['coordinates'][0] * 1000,
+                                                        geometrical_part['coordinates'][1] * 1000))
+
+                    # if the piece is half a set, we add a residual gap between the pieces
+                    if geometrical_part['type'] in ['half set']:
+                        residual_gap = 5e-6
+                        if geometrical_part['rotation'][0] > 0:
+                            piece.Placement.move(FreeCAD.Vector(0, 0, residual_gap / 2 * 1000))
+                        else:
+                            piece.Placement.move(FreeCAD.Vector(0, 0, -residual_gap / 2 * 1000))
+
+                    document.recompute()
+
+                    pieces_to_export.append(piece)
+
+            if export_files:
+                for index, piece in enumerate(pieces_to_export):
+                    piece.Label = f"core_part_{index}"
+                Import.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.step")
+                Mesh.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.obj")
+
+            if save_files:
+                document.saveAs(f"{output_path}{os.path.sep}{project_name}.FCStd")
+
+            if close_file_after_finishing:
+                FreeCAD.closeDocument(project_name)
+
+            if export_files:
+                return f"{output_path}{os.path.sep}{project_name}.step", f"{output_path}{os.path.sep}{project_name}.obj"
+            else:
+                return pieces_to_export
+
+        except:  # noqa: E722
+            with contextlib.suppress(NameError):
+                document = FreeCAD.ActiveDocument
+                document.saveAs(f"{output_path}/error.FCStd")
+                FreeCAD.closeDocument(project_name)
+            return None, None
+ 
+    
+    
     def get_spacer(self, geometrical_data):
         document = FreeCAD.ActiveDocument
         document.recompute()
@@ -171,24 +272,6 @@ class Builder:
                 if geometrical_part['type'] == 'spacer':
                     spacer = self.get_spacer(geometrical_part)
                     pieces_to_export.append(spacer)
-                 
-                elif geometrical_part['type'] == 'bobbin':
-                    shape_data = geometrical_part['shape']
-                    part_builder = Builder().factory(shape_data)
-                    bobbin = part_builder.get_bobbin(data=copy.deepcopy(shape_data),
-                                                    name=f"Bobbin_{index}",
-                                                    save_files=False,
-                                                    export_files=False)   
-                    m = bobbin.Placement.Matrix
-                    m.rotateX(geometrical_part['rotation'][2])
-                    m.rotateY(geometrical_part['rotation'][0])
-                    m.rotateZ(geometrical_part['rotation'][1])
-                    bobbin.Placement.Matrix = m
-                    document.recompute()
-                    bobbin.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
-                                                        geometrical_part['coordinates'][0] * 1000,
-                                                        geometrical_part['coordinates'][1] * 1000))
-                    pieces_to_export.append(bobbin)
 
                 elif geometrical_part['type'] in ['half set', 'toroidal']:
                     shape_data = geometrical_part['shape']
