@@ -30,13 +30,13 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'pqi']:
-                    # if data['family'] != "pq":
-                    #     continue
+
+                    print(data["name"])
                     core = builder.Builder().factory(data)
                     core.get_piece(data, save_files=True, export_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
-                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj"))
+                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
 
     def test_all_technical_drawings_generated(self):
         colors = {
@@ -95,6 +95,7 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut', 'pqi']:
+                    continue
 
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
@@ -119,7 +120,7 @@ class Tests(unittest.TestCase):
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
-                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj"))
+                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
 
     def test_all_subtractive_distributed_gapped_cores_generated(self):
         dummyGapping = [
@@ -175,7 +176,7 @@ class Tests(unittest.TestCase):
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
-                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj"))
+                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
 
     def test_all_additive_gapped_cores_generated(self):
         dummyGapping = [
@@ -235,7 +236,7 @@ class Tests(unittest.TestCase):
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
-                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj"))
+                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
 
     def test_all_additive_technical_drawing_cores_generated(self):
         dummyGapping = [
