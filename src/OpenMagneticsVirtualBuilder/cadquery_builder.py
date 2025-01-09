@@ -109,7 +109,6 @@ class CadQueryBuilder:
                                                    save_files=False,
                                                    export_files=False)
 
-                    print(geometrical_part['rotation'])
                     piece = piece.rotate((1, 0, 0), (-1, 0, 0), geometrical_part['rotation'][0] / math.pi * 180)
                     piece = piece.rotate((0, 1, 0), (0, -1, 0), geometrical_part['rotation'][2] / math.pi * 180)
                     piece = piece.rotate((0, 0, 1), (0, 0, -1), geometrical_part['rotation'][1] / math.pi * 180)

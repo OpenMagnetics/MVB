@@ -30,6 +30,9 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'pqi']:
+                    # if data['family'] != "t":
+                    # if data['name'] != "T 22/14/13":
+                        # continue
 
                     print(data["name"])
                     core = builder.Builder().factory(data)
@@ -95,7 +98,9 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut', 'pqi']:
-                    continue
+                    # if data['family'] != "t":
+                    # if data['name'] != "T 22/14/13":
+                    #     continue
 
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
