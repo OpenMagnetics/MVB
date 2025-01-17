@@ -52,7 +52,7 @@ class Builder:
             shaper.name.lower()
             .replace("_", " "): self.factory({'family': shaper.name})
             .get_dimensions_and_subtypes()
-            for shaper in self.shapers
+            for shaper in self.engine.shapers
         }
 
     def get_spacer(self, geometrical_data):

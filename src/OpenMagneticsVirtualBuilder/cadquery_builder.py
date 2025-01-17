@@ -143,8 +143,6 @@ class CadQueryBuilder:
                 exporters.export(scaled_pieces_to_export, f"{output_path}/{project_name}.step", "STEP")
                 exporters.export(scaled_pieces_to_export, f"{output_path}/{project_name}.stl", "STL")
 
-            if export_files:
-                return f"{output_path}{os.path.sep}{project_name}.step", f"{output_path}{os.path.sep}{project_name}.obj"
             else:
                 return scaled_pieces_to_export
 
@@ -209,21 +207,23 @@ class CadQueryBuilder:
 
                 document.recompute()
                 if export_files:
-                    import Import
-                    import Mesh
-                    Import.export([plate], f"{self.output_path}/{project_name}.step")
-                    Mesh.export([plate], f"{self.output_path}/{project_name}.obj")
+                    from cadquery import exporters
+                    scaled_pieces_to_export = []
+                    for piece in [plate]:
+                        for o in piece.objects:
+                            scaled_pieces_to_export.append(o.scale(1000))
+
+                    scaled_pieces_to_export = cq.Compound.makeCompound(scaled_pieces_to_export)
+
+                    exporters.export(scaled_pieces_to_export, f"{self.output_path}/{project_name}.step", "STEP")
+                    exporters.export(scaled_pieces_to_export, f"{self.output_path}/{project_name}.stl", "STL")
 
                 if save_files:
                     document.saveAs(f"{self.output_path}/{project_name}.FCStd")
 
                 if not close_file_after_finishing:
                     return plate
-
-                FreeCAD.closeDocument(project_name)
-                return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
             except:  # noqa: E722
-                FreeCAD.closeDocument(project_name)
                 return None, None
 
         def get_piece(self, data, name="Piece", save_files=False, export_files=True):
