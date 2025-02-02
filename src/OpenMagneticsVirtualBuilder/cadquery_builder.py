@@ -66,7 +66,8 @@ class CadQueryBuilder:
             utils.ShapeFamily.EFD: self.Efd(),
             utils.ShapeFamily.U: self.U(),
             utils.ShapeFamily.UR: self.Ur(),
-            utils.ShapeFamily.T: self.T()
+            utils.ShapeFamily.T: self.T(),
+            utils.ShapeFamily.C: self.C()
         }
 
     def factory(self, data):
@@ -90,7 +91,7 @@ class CadQueryBuilder:
         return spacer
 
     def get_core(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
-        try:
+        # try:
             pieces_to_export = []
             project_name = f"{project_name}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
 
@@ -142,12 +143,12 @@ class CadQueryBuilder:
 
                 exporters.export(scaled_pieces_to_export, f"{output_path}/{project_name}.step", "STEP")
                 exporters.export(scaled_pieces_to_export, f"{output_path}/{project_name}.stl", "STL")
-
+                return f"{output_path}/{project_name}.step", f"{output_path}/{project_name}.stl",
             else:
                 return scaled_pieces_to_export
 
-        except:  # noqa: E722
-            return None, None
+        # except:  # noqa: E722
+        #     return None, None
     
     def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
         raise NotImplementedError
@@ -217,6 +218,7 @@ class CadQueryBuilder:
 
                     exporters.export(scaled_pieces_to_export, f"{self.output_path}/{project_name}.step", "STEP")
                     exporters.export(scaled_pieces_to_export, f"{self.output_path}/{project_name}.stl", "STL")
+                    return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.stl"
 
                 if save_files:
                     document.saveAs(f"{self.output_path}/{project_name}.FCStd")
@@ -1798,6 +1800,75 @@ class CadQueryBuilder:
 
             piece = piece.translate((0, 0, -c))
             piece = piece.rotate((0, 1, 0), (0, -1, 0), 90)
+            return piece
+
+    class C(IPiece):
+        def get_shape_base(self, data):
+            dimensions = data["dimensions"]
+
+            c = dimensions["C"] / 2
+            winding_column_width = (dimensions["A"] - dimensions["E"]) / 2
+            left_a = dimensions["A"] - winding_column_width / 2
+            right_a = winding_column_width / 2
+
+            result = (
+                cq.Sketch()
+                .segment((right_a, c), (-left_a, c), "top_line")
+                .segment((-left_a, c), (-left_a, -c), "left_line")
+                .segment((-left_a, -c), (right_a, -c), "bottom_line")
+                .segment((right_a, -c), (right_a, c), "right_line")
+
+                .constrain("top_line", "left_line", 'Coincident', None)
+                .constrain("left_line", "bottom_line", 'Coincident', None)
+                .constrain("bottom_line", "right_line", 'Coincident', None)
+                .constrain("right_line", "top_line", 'Coincident', None)
+                .constrain("right_line", 'Orientation', (0, 1))
+                .constrain("left_line", 'Orientation', (0, 1))
+                .constrain("top_line", 'Orientation', (1, 0))
+                .constrain("bottom_line", 'Orientation', (1, 0))
+                .solve()
+                .assemble()
+            )
+
+            return result
+
+        def get_dimensions_and_subtypes(self):
+            return {1: ["A", "B", "C", "D", "E"]}
+
+        def get_negative_winding_window(self, dimensions):
+            winding_column_width = (dimensions["A"] - dimensions["E"]) / 2
+            negative_winding_window = (
+                cq.Workplane()
+                .box(dimensions["E"], dimensions["C"] * 2, dimensions["D"])
+                .tag("negative_winding_window")
+                .translate((-(winding_column_width / 2 + dimensions["E"] / 2), 0, dimensions["D"] / 2 + (dimensions["B"] - dimensions["D"])))
+            )
+            return negative_winding_window
+
+        def apply_machining(self, piece, machining, dimensions):
+            winding_column_width = (dimensions["A"] - dimensions["E"]) / 2
+            translate = convert_axis(machining['coordinates'])
+            gap = (
+                cq.Workplane()
+                .box(winding_column_width, dimensions["C"], machining['length'])
+                .tag("gap")
+                .translate(translate)
+            )
+
+            machined_piece = piece - gap
+
+            return machined_piece
+
+        def get_shape_extras(self, data, piece):
+            dimensions = data["dimensions"]
+            fillet_radius = (dimensions["A"] - dimensions["E"]) / 2
+
+            piece = piece.translate((0, 0, -(dimensions["B"] - dimensions["D"]) / 2))
+            # piece = piece.edges("|Y").edges("<Z").all().fillet(fillet_radius)
+            piece = piece.edges("|Y").edges("<Z").fillet(fillet_radius)
+            piece = piece.translate((0, 0, (dimensions["B"] - dimensions["D"]) / 2))
+
+            piece = piece.translate((0, 0, -dimensions["B"]))
             return piece
 
 

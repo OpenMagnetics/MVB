@@ -32,6 +32,7 @@ class ShapeFamily(enum.Enum, metaclass=Meta):
     UT = enum.auto()
     LP = enum.auto()
     T = enum.auto()
+    C = enum.auto()
 
 
 def decimal_ceil(a, precision=0):
