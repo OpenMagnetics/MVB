@@ -355,7 +355,7 @@ class CadQueryBuilder:
                     if "C" in dimensions and dimensions["C"] > 0:
                         c = dimensions["C"] / 2
                     else:
-                        c = utils.decimal_floor(dimensions["E"] * math.cos(math.asin(dimensions["G"] / dimensions["E"])) / 2, 2) * 0.95
+                        c = utils.decimal_floor(dimensions["E"] * math.cos(math.asin(dimensions["G"] / dimensions["E"])) / 2, 6) * 0.95
 
                     length = dimensions["A"] / 2 - c
                     width = dimensions["G"]
