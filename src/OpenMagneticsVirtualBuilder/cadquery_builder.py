@@ -91,7 +91,7 @@ class CadQueryBuilder:
         return spacer
 
     def get_core(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
-        # try:
+        try:
             pieces_to_export = []
             project_name = f"{project_name}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
 
@@ -147,8 +147,8 @@ class CadQueryBuilder:
             else:
                 return scaled_pieces_to_export
 
-        # except:  # noqa: E722
-        #     return None, None
+        except:  # noqa: E722
+            return None, None
     
     def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
         raise NotImplementedError
@@ -646,8 +646,8 @@ class CadQueryBuilder:
     class Pm(P):
         def get_dimensions_and_subtypes(self):
             return {
-                1: ["A", "B", "C", "D", "E", "F", "G", "H", "b", "t"],
-                2: ["A", "B", "C", "D", "E", "F", "G", "H", "b", "t"]
+                1: ["A", "B", "C", "D", "E", "F", "G", "H", "b", "t", "alpha"],
+                2: ["A", "B", "C", "D", "E", "F", "G", "H", "b", "t", "alpha"]
             }
 
         def get_shape_base(self, data):
@@ -1019,7 +1019,7 @@ class CadQueryBuilder:
             piece = piece.translate((0, 0, -dimensions["B"]))
             fillet_radius = (dimensions["B"] - dimensions["D"]) / 2
 
-            piece = piece.edges("|X").edges("<Y").all()[2].fillet(fillet_radius)
+            piece = piece.edges("|X").edges("<Y").edges(">Z").fillet(fillet_radius)
             return piece
 
         def get_negative_winding_window(self, dimensions):
@@ -1069,13 +1069,31 @@ class CadQueryBuilder:
         def get_dimensions_and_subtypes(self):
             return {1: ["A", "B", "C", "D", "E", "F", "G"]}
 
+        def get_negative_winding_window(self, dimensions):
+            winding_window_cylinder = (
+                cq.Workplane()
+                .cylinder(dimensions['D'], dimensions['E'] / 2)
+                .tag("winding_window_cylinder")
+                .translate((0, 0, dimensions["D"] / 2 + (dimensions["B"] - dimensions["D"])))
+            )
+
+            central_column_cylinder = (
+                cq.Workplane()
+                .cylinder(dimensions['D'], dimensions['F'] / 2)
+                .tag("central_column_cylinder")
+                .translate((0, 0, dimensions["D"] / 2 + (dimensions["B"] - dimensions["D"])))
+            )
+            winding_window = winding_window_cylinder - central_column_cylinder
+
+            return winding_window
+
         def get_shape_extras(self, data, piece):
             dimensions = data["dimensions"]
             piece = piece.translate((0, 0, -dimensions["B"]))
-            fillet_radius = (dimensions["B"] - dimensions["D"]) / 2
+            # fillet_radius = (dimensions["B"] - dimensions["D"]) / 2
 
-            piece = piece.edges("|X").edges("<Y").all()[2].fillet(fillet_radius)
-            piece = piece.edges("|X").edges(">Y").all()[0].fillet(fillet_radius)
+            # piece = piece.edges("|X").edges("<Y").all()[2].fillet(fillet_radius)
+            # piece = piece.edges("|X").edges(">Y").all()[0].fillet(fillet_radius)
             return piece
 
     class Ec(Er):
@@ -1428,34 +1446,78 @@ class CadQueryBuilder:
             dent_top_width = dimensions["F"] / 2
             dent_bottom_width = dimensions["F"] / 2 - dimensions["q"]
 
-            sketch = (
-                cq.Sketch()
-                .segment((-a, top_c), (-dent_top_width, top_c), "top_line_left")
-                .segment((-dent_top_width, top_c), (-dent_bottom_width, top_c - dent_height), "dent_line_left")
-                .segment((-dent_bottom_width, top_c - dent_height), (dent_bottom_width, top_c - dent_height), "dent_line_bottom")
-                .segment((dent_bottom_width, top_c - dent_height), (dent_top_width, top_c), "dent_line_right")
-                .segment((dent_top_width, top_c), (a, top_c), "top_line_right")
-                .segment((a, top_c), (a, -bottom_c), "right_line")
-                .segment((a, -bottom_c), (-a, -bottom_c), "bottom_line")
-                .segment((-a, -bottom_c), (-a, top_c), "left_line")
+            if dimensions["K"] > 0:
+                minident_semiwidth = dimensions["F"] / 2 - dimensions["q"]
+                minident_depth = dimensions["K"]
+                sketch = (
+                    cq.Sketch()
+                    .segment((-a, top_c), (-dent_top_width, top_c), "top_line_left")
+                    .segment((-dent_top_width, top_c), (-dent_bottom_width, top_c - dent_height), "dent_line_left")
+                    .segment((-dent_bottom_width, top_c - dent_height), (dent_bottom_width, top_c - dent_height), "dent_line_bottom")
+                    .segment((dent_bottom_width, top_c - dent_height), (dent_top_width, top_c), "dent_line_right")
+                    .segment((dent_top_width, top_c), (a, top_c), "top_line_right")
+                    .segment((a, top_c), (a, -bottom_c), "right_line")
+                    .segment((a, -bottom_c), (minident_semiwidth, -bottom_c), "bottom_line_left")
+                    .segment((minident_semiwidth, -bottom_c), (minident_semiwidth, -bottom_c + minident_depth), "minident_left_side")
+                    .segment((minident_semiwidth, -bottom_c + minident_depth), (-minident_semiwidth, -bottom_c + minident_depth), "minident_bottom")
+                    .segment((-minident_semiwidth, -bottom_c + minident_depth), (-minident_semiwidth, -bottom_c), "minident_right_side")
+                    .segment((-minident_semiwidth, -bottom_c), (-a, -bottom_c), "bottom_line_right")
+                    .segment((-a, -bottom_c), (-a, top_c), "left_line")
 
-                .constrain("top_line_left", "dent_line_left", 'Coincident', None)
-                .constrain("dent_line_left", "dent_line_bottom", 'Coincident', None)
-                .constrain("dent_line_bottom", "dent_line_right", 'Coincident', None)
-                .constrain("dent_line_right", "top_line_right", 'Coincident', None)
-                .constrain("top_line_right", "right_line", 'Coincident', None)
-                .constrain("right_line", "bottom_line", 'Coincident', None)
-                .constrain("bottom_line", "left_line", 'Coincident', None)
-                .constrain("left_line", "top_line_left", 'Coincident', None)
-                .constrain("right_line", 'Orientation', (0, 1))
-                .constrain("left_line", 'Orientation', (0, 1))
-                .constrain("top_line_left", 'Orientation', (1, 0))
-                .constrain("top_line_right", 'Orientation', (1, 0))
-                .constrain("bottom_line", 'Orientation', (1, 0))
-                .constrain("dent_line_bottom", 'Orientation', (1, 0))
-                .solve()
-                .assemble()
-            )
+                    .constrain("top_line_left", "dent_line_left", 'Coincident', None)
+                    .constrain("dent_line_left", "dent_line_bottom", 'Coincident', None)
+                    .constrain("dent_line_bottom", "dent_line_right", 'Coincident', None)
+                    .constrain("dent_line_right", "top_line_right", 'Coincident', None)
+                    .constrain("top_line_right", "right_line", 'Coincident', None)
+                    .constrain("right_line", "bottom_line_left", 'Coincident', None)
+                    .constrain("bottom_line_left", "minident_left_side", 'Coincident', None)
+                    .constrain("minident_left_side", "minident_bottom", 'Coincident', None)
+                    .constrain("minident_bottom", "minident_right_side", 'Coincident', None)
+                    .constrain("minident_right_side", "bottom_line_right", 'Coincident', None)
+                    .constrain("bottom_line_right", "left_line", 'Coincident', None)
+                    .constrain("left_line", "top_line_left", 'Coincident', None)
+                    .constrain("right_line", 'Orientation', (0, 1))
+                    .constrain("left_line", 'Orientation', (0, 1))
+                    .constrain("top_line_left", 'Orientation', (1, 0))
+                    .constrain("top_line_right", 'Orientation', (1, 0))
+                    .constrain("bottom_line_left", 'Orientation', (1, 0))
+                    .constrain("minident_bottom", 'Orientation', (1, 0))
+                    .constrain("bottom_line_right", 'Orientation', (1, 0))
+                    .constrain("minident_left_side", 'Orientation', (0, 1))
+                    .constrain("minident_right_side", 'Orientation', (0, 1))
+                    .constrain("dent_line_bottom", 'Orientation', (1, 0))
+                    .solve()
+                    .assemble()
+                )
+            else:
+                sketch = (
+                    cq.Sketch()
+                    .segment((-a, top_c), (-dent_top_width, top_c), "top_line_left")
+                    .segment((-dent_top_width, top_c), (-dent_bottom_width, top_c - dent_height), "dent_line_left")
+                    .segment((-dent_bottom_width, top_c - dent_height), (dent_bottom_width, top_c - dent_height), "dent_line_bottom")
+                    .segment((dent_bottom_width, top_c - dent_height), (dent_top_width, top_c), "dent_line_right")
+                    .segment((dent_top_width, top_c), (a, top_c), "top_line_right")
+                    .segment((a, top_c), (a, -bottom_c), "right_line")
+                    .segment((a, -bottom_c), (-a, -bottom_c), "bottom_line")
+                    .segment((-a, -bottom_c), (-a, top_c), "left_line")
+
+                    .constrain("top_line_left", "dent_line_left", 'Coincident', None)
+                    .constrain("dent_line_left", "dent_line_bottom", 'Coincident', None)
+                    .constrain("dent_line_bottom", "dent_line_right", 'Coincident', None)
+                    .constrain("dent_line_right", "top_line_right", 'Coincident', None)
+                    .constrain("top_line_right", "right_line", 'Coincident', None)
+                    .constrain("right_line", "bottom_line", 'Coincident', None)
+                    .constrain("bottom_line", "left_line", 'Coincident', None)
+                    .constrain("left_line", "top_line_left", 'Coincident', None)
+                    .constrain("right_line", 'Orientation', (0, 1))
+                    .constrain("left_line", 'Orientation', (0, 1))
+                    .constrain("top_line_left", 'Orientation', (1, 0))
+                    .constrain("top_line_right", 'Orientation', (1, 0))
+                    .constrain("bottom_line", 'Orientation', (1, 0))
+                    .constrain("dent_line_bottom", 'Orientation', (1, 0))
+                    .solve()
+                    .assemble()
+                )
 
             return sketch
 
@@ -1665,6 +1727,46 @@ class CadQueryBuilder:
                     .translate(translate)
                 )
                 piece += winding_column + lateral_column
+
+            if "S" in dimensions:
+                if "F" in dimensions:
+                    winding_column_width = dimensions["F"]
+                else:
+                    winding_column_width = dimensions["C"]
+
+                translate = (-(dimensions["A"] - winding_column_width / 2 - dimensions["S"] / 2), 0, dimensions["B"] / 2)
+                lateral_hole_round_left = (
+                    cq.Workplane()
+                    .cylinder(dimensions["B"], dimensions["S"] / 2)
+                    .tag("lateral_hole_round_left")
+                    .translate(translate)
+                )
+
+                translate = (-(dimensions["A"] - winding_column_width / 2 - dimensions["S"] / 4), 0, dimensions["B"] / 2)
+                lateral_hole_rectangular_left = (
+                    cq.Workplane()
+                    .box(dimensions["S"] / 2, dimensions["S"], dimensions["B"])
+                    .tag("lateral_hole_rectangular_left")
+                    .translate(translate)
+                )
+                piece -= lateral_hole_round_left + lateral_hole_rectangular_left
+
+                translate = (winding_column_width / 2 - dimensions["S"] / 2, 0, dimensions["B"] / 2)
+                lateral_hole_round_roight = (
+                    cq.Workplane()
+                    .cylinder(dimensions["B"], dimensions["S"] / 2)
+                    .tag("lateral_hole_round_roight")
+                    .translate(translate)
+                )
+
+                translate = (winding_column_width / 2 - dimensions["S"] / 4, 0, dimensions["B"] / 2)
+                lateral_hole_rectangular_right = (
+                    cq.Workplane()
+                    .box(dimensions["S"] / 2, dimensions["S"], dimensions["B"])
+                    .tag("lateral_hole_rectangular_right")
+                    .translate(translate)
+                )
+                piece -= lateral_hole_round_roight + lateral_hole_rectangular_right
 
             piece = piece.translate((0, 0, -dimensions["B"]))
             return piece

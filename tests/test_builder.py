@@ -29,9 +29,10 @@ class Tests(unittest.TestCase):
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ['ui', 'pqi']:
+                if data["family"] not in ['ui', 'pqi', 'ut']:
                     # if data['name'] != "T 22/14/13":
                     # if data['family'] != "c":
+                    # if data['family'] != "p":
                         # continue
 
                     print(data["name"])
