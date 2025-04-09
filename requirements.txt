@@ -1,2 +1,3 @@
 numpy
 PyMKF
+cadquery @ git+https://github.com/CadQuery/cadquery.git
