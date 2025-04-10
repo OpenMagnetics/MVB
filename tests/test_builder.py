@@ -24,6 +24,23 @@ class Tests(unittest.TestCase):
     def tearDownClass(cls):
         print("\nFinishing tests for builder")
 
+    def test_all_bobbins_generated(self):
+
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/bobbins.ndjson', 'r') as f:
+            for ndjson_line in f:
+                data = json.loads(ndjson_line)
+                if data["functionalDescription"]["family"] in ['pq', 'rm', 'e']:
+                    # if data['family'] != "p":
+                    # if data['name'] != "Bobbin E25/7":
+                        # continue
+
+                    print(data["name"])
+                    core = builder.Builder("FreeCAD").factory(data["functionalDescription"])
+                    core.get_bobbin(data["functionalDescription"], save_files=True, export_files=True)
+                    filename = f"{data['functionalDescription']['shape']}_bobbin".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
+                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
+
     def test_all_shapes_generated(self):
 
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:

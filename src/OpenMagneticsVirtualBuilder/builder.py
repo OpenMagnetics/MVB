@@ -55,6 +55,9 @@ class Builder:
             for shaper in self.engine.shapers
         }
 
+    def get_magnetic(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
+        return self.engine.get_magnetic(project_name, geometrical_description, output_path, save_files, export_files)
+
     def get_spacer(self, geometrical_data):
         return self.engine.get_spacer(geometrical_data)
 
