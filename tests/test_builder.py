@@ -37,7 +37,7 @@ class Tests(unittest.TestCase):
                     print(data["name"])
                     core = builder.Builder("FreeCAD").factory(data["functionalDescription"])
                     core.get_bobbin(data["functionalDescription"], save_files=True, export_files=True)
-                    filename = f"{data["functionalDescription"]['shape']}_bobbin".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+                    filename = f"{data['functionalDescription']['shape']}_bobbin".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
 
