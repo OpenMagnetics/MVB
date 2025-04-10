@@ -120,125 +120,138 @@ class FreeCADBuilder:
             for shaper in self.shapers
         }
 
-    def get_magnetic(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
+    def get_magnetic(self,
+                 project_name,
+                 geometrical_description,
+                 output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/',
+                 save_files=True,
+                 export_files=True):
         import FreeCAD
         try:
-            pieces_to_export = []
-            project_name = f"{project_name}_magnetic".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-
+            # Ensure output path
             os.makedirs(output_path, exist_ok=True)
 
-            close_file_after_finishing = False
-            if FreeCAD.ActiveDocument is None:
-                close_file_after_finishing = True
-                FreeCAD.newDocument(project_name)
+            # Detect or insert bobbin geometry
+            bobbin_part = next((part for part in geometrical_description
+                                if part['type'] == 'bobbin'), None)
 
-            document = FreeCAD.ActiveDocument
-            if any(part['type'] == 'bobbin' for part in geometrical_description):
-                    '''Bobbin has been provided by the user'''
-                    pass
-            else:
-                '''Bobbin has not been provided try to get it from the PyMKF'''
+            if not bobbin_part:
+                # No bobbin was found; try to deduce from the first part's name
                 core_name = geometrical_description[0]['shape']['name']
-                print(f"Core name obtained: {core_name}")
                 bobbin_name = core_name.replace("E", "Bobbin")
-
-                print(f"Bobbin name generated: {bobbin_name}")
                 data = PyMKF.find_bobbin_by_name(bobbin_name)
                 if data is None:
                     raise ValueError(f"Bobbin data not found for: {bobbin_name}")
-                geometrical_description.append(data)
 
-                print(f"Added bobbin with shape: {data}")
-            
-            for index, geometrical_part in enumerate(geometrical_description):
-                
-                if geometrical_part['type'] == 'spacer':
-                    spacer = self.get_spacer(geometrical_part)
-                    pieces_to_export.append(spacer)
-                 
-                elif geometrical_part['type'] == 'bobbin':
+                # Append bobbin geometry
+                geometrical_description.append(data)
+                bobbin_part = data
+
+            # Split out the geometry that is the "core" (spacers, half sets, toroidal)
+            core_geometry = []
+            bobbin_geometry = []
+            for part in geometrical_description:
+                if part['type'] in ['spacer', 'half set', 'toroidal']:
+                    core_geometry.append(part)
+                elif part['type'] == 'bobbin':
+                    bobbin_geometry.append(part)
+
+            # We need a document to keep everything in the same place
+            close_file_after_finishing = False
+            if FreeCAD.ActiveDocument is None:
+                close_file_after_finishing = True
+                FreeCAD.newDocument(project_name + "_magnetic")
+            document = FreeCAD.ActiveDocument
+
+            # 1) Build the core pieces using get_core, but do NOT export/save yet
+            core_outputs = None
+            if core_geometry:
+                core_outputs = self.get_core(
+                    project_name=project_name + "_magnetic_core",
+                    geometrical_description=core_geometry,
+                    output_path=output_path,
+                    save_files=False,
+                    export_files=False,
+                    doc=document  # Pass in the existing doc
+                )
+            else:
+                core_outputs = []
+
+            # 2) Build/Place each bobbin part in the same document
+            pieces_to_export = []
+            if bobbin_geometry:
+                for index, geometrical_part in enumerate(bobbin_geometry):
                     shape_data = geometrical_part['shape']
                     part_builder = FreeCADBuilder().factory(shape_data)
                     bobbin = part_builder.get_bobbin(data=copy.deepcopy(shape_data),
-                                                     name=f"Bobbin_{index}",
-                                                     save_files=False,
-                                                     export_files=False)   
+                                                    name=f"Bobbin_{index}",
+                                                    save_files=False,
+                                                    export_files=False)
+
                     m = bobbin.Placement.Matrix
                     m.rotateX(geometrical_part['rotation'][2])
                     m.rotateY(geometrical_part['rotation'][0])
                     m.rotateZ(geometrical_part['rotation'][1])
                     bobbin.Placement.Matrix = m
                     document.recompute()
-                    bobbin.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
-                                                         geometrical_part['coordinates'][0] * 1000,
-                                                         geometrical_part['coordinates'][1] * 1000))
+
+                    bobbin.Placement.move(FreeCAD.Vector(
+                        geometrical_part['coordinates'][2] * 1000,
+                        geometrical_part['coordinates'][0] * 1000,
+                        geometrical_part['coordinates'][1] * 1000
+                    ))
+                    document.recompute()
                     pieces_to_export.append(bobbin)
 
-                elif geometrical_part['type'] in ['half set', 'toroidal']:
-                    shape_data = geometrical_part['shape']
-                    part_builder = FreeCADBuilder().factory(shape_data)
-                    piece = part_builder.get_piece(data=copy.deepcopy(shape_data),
-                                                   name=f"Piece_{index}",
-                                                   save_files=False,
-                                                   export_files=False)
-    
-                    m = piece.Placement.Matrix
-                    m.rotateX(geometrical_part['rotation'][2])
-                    m.rotateY(geometrical_part['rotation'][0])
-                    m.rotateZ(geometrical_part['rotation'][1])
-                    piece.Placement.Matrix = m
-                    document.recompute()
+            # Combine the newly created bobbin shapes with the core pieces 
+            # (core_outputs will be either a list of shapes or (None, None) if something failed)
+            if isinstance(core_outputs, list):
+                pieces_to_export.extend(core_outputs)
 
-                    if 'machining' in geometrical_part and geometrical_part['machining'] is not None:
-                        for machining in geometrical_part['machining']:
-                            piece = part_builder.apply_machining(piece=piece,
-                                                                 machining=machining,
-                                                                 dimensions=flatten_dimensions(shape_data))
-                        document.recompute()
+            # Final labeling, exporting, saving if the user asked for it
+            if export_files and pieces_to_export:
+                # Label them so you can differentiate after the export
+                for i, piece in enumerate(pieces_to_export):
+                    piece.Label = f"mag_part_{i}"
 
-                    piece.Placement.move(FreeCAD.Vector(geometrical_part['coordinates'][2] * 1000,
-                                                        geometrical_part['coordinates'][0] * 1000,
-                                                        geometrical_part['coordinates'][1] * 1000))
-
-                    # if the piece is half a set, we add a residual gap between the pieces
-                    if geometrical_part['type'] in ['half set']:
-                        residual_gap = 5e-6
-                        if geometrical_part['rotation'][0] > 0:
-                            piece.Placement.move(FreeCAD.Vector(0, 0, residual_gap / 2 * 1000))
-                        else:
-                            piece.Placement.move(FreeCAD.Vector(0, 0, -residual_gap / 2 * 1000))
-
-                    document.recompute()
-
-                    pieces_to_export.append(piece)
-
-            if export_files:
-                for index, piece in enumerate(pieces_to_export):
-                    piece.Label = f"core_part_{index}"
                 import Import
                 import Mesh
-                Import.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.step")
-                Mesh.export(pieces_to_export, f"{output_path}{os.path.sep}{project_name}.obj")
+
+                final_project_name = f"{project_name}_magnetic".replace(" ", "_") \
+                                                            .replace("-", "_") \
+                                                            .replace("/", "_") \
+                                                            .replace(".", "__")
+                step_path = f"{output_path}{os.path.sep}{final_project_name}.step"
+                obj_path  = f"{output_path}{os.path.sep}{final_project_name}.obj"
+
+                Import.export(pieces_to_export, step_path)
+                Mesh.export(pieces_to_export, obj_path)
 
             if save_files:
-                document.saveAs(f"{output_path}{os.path.sep}{project_name}.FCStd")
+                final_project_name = f"{project_name}_magnetic".replace(" ", "_") \
+                                                                .replace("-", "_") \
+                                                                .replace("/", "_") \
+                                                                .replace(".", "__")
+                document.saveAs(f"{output_path}{os.path.sep}{final_project_name}.FCStd")
 
             if close_file_after_finishing:
-                FreeCAD.closeDocument(project_name)
+                FreeCAD.closeDocument(document.Name)
 
-            if export_files:
-                return f"{output_path}{os.path.sep}{project_name}.step", f"{output_path}{os.path.sep}{project_name}.obj"
+            if export_files and pieces_to_export:
+                return (step_path, obj_path)
             else:
                 return pieces_to_export
 
-        except:  # noqa: E722
+        except:
+            # In the event of an error, attempt to save a debug file
             with contextlib.suppress(NameError):
                 document = FreeCAD.ActiveDocument
-                document.saveAs(f"{output_path}/error.FCStd")
-                FreeCAD.closeDocument(project_name)
+                if document:
+                    document.saveAs(f"{output_path}/error.FCStd")
+                    FreeCAD.closeDocument(document.Name)
             return None, None
- 
+
+
     def get_spacer(self, geometrical_data):
         import FreeCAD
         document = FreeCAD.ActiveDocument
