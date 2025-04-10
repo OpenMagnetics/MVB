@@ -9,6 +9,7 @@ import pathlib
 import platform
 sys.path.append(os.path.dirname(__file__))
 import utils
+import PyMKF
 
 file_dir = os.path.dirname(__file__)
 sys.path.append(file_dir)
@@ -133,8 +134,25 @@ class FreeCADBuilder:
                 FreeCAD.newDocument(project_name)
 
             document = FreeCAD.ActiveDocument
+            if any(part['type'] == 'bobbin' for part in geometrical_description):
+                    '''Bobbin has been provided by the user'''
+                    pass
+            else:
+                '''Bobbin has not been provided try to get it from the PyMKF'''
+                core_name = geometrical_description[0]['shape']['name']
+                print(f"Core name obtained: {core_name}")
+                bobbin_name = core_name.replace("E", "Bobbin")
 
+                print(f"Bobbin name generated: {bobbin_name}")
+                data = PyMKF.find_bobbin_by_name(bobbin_name)
+                if data is None:
+                    raise ValueError(f"Bobbin data not found for: {bobbin_name}")
+                geometrical_description.append(data)
+
+                print(f"Added bobbin with shape: {data}")
+            
             for index, geometrical_part in enumerate(geometrical_description):
+                
                 if geometrical_part['type'] == 'spacer':
                     spacer = self.get_spacer(geometrical_part)
                     pieces_to_export.append(spacer)
