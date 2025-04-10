@@ -32,7 +32,7 @@ class Tests(unittest.TestCase):
                 if data["family"] not in ['ui', 'pqi', 'ut']:
                     # if data['name'] != "T 22/14/13":
                     # if data['family'] != "c":
-                    # if data['family'] != "p":
+                    # if data['family'] != "planar el":
                         # continue
 
                     print(data["name"])

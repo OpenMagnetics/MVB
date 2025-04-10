@@ -905,7 +905,7 @@ class CadQueryBuilder:
 
             if 'G' in dimensions and dimensions["G"] > dimensions["F"]:
                 if dimensions["C"] > dimensions["F"]:
-                    length = dimensions["E"]
+                    length = dimensions["G"]
                     width = dimensions["C"]
                     height = dimensions["D"]
                     translate = (0, 0, height / 2 + dimensions["B"] - dimensions["D"])
@@ -921,30 +921,6 @@ class CadQueryBuilder:
                     cuts = [cube]
                 else:
                     assert 0
-                    length = dimensions["C"]
-                    width = dimensions["G"] / 2 - dimensions["F"] / 2
-                    height = dimensions["D"]
-                    translate = (0, width / 2 + dimensions["F"] / 2, height / 2 + dimensions["B"] - dimensions["D"])
-
-                    lateral_top_cube = (
-                        cq.Workplane()
-                        .box(length, width, height)
-                        .tag("lateral_top_cube")
-                        .translate(translate)
-                    )
-
-                    length = dimensions["C"]
-                    width = dimensions["G"] / 2 - dimensions["F"] / 2
-                    height = dimensions["D"]
-                    translate = (0, -(width / 2 + dimensions["F"] / 2), height / 2 + dimensions["B"] - dimensions["D"])
-
-                    lateral_bottom_cube = (
-                        cq.Workplane()
-                        .box(length, width, height)
-                        .tag("lateral_bottom_cube")
-                        .translate(translate)
-                    )
-                    cuts = [lateral_top_cube, lateral_bottom_cube]
 
             for cut in cuts:
                 winding_window = winding_window + cut
