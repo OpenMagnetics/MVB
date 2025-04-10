@@ -140,12 +140,13 @@ class FreeCADBuilder:
                 core_name = geometrical_description[0]['shape']['name']
                 bobbin_name = core_name.replace("E", "Bobbin")
                 data = PyMKF.find_bobbin_by_name(bobbin_name)
-                if data is None:
-                    raise ValueError(f"Bobbin data not found for: {bobbin_name}")
-
-                # Append bobbin geometry
-                geometrical_description.append(data)
-                bobbin_part = data
+                #TODO. this does not work for all the cores. Bobbinname is differnt than the core name
+                if data is None or (isinstance(data, dict) and any(isinstance(value, str) and 'Exception' in value for value in data.values())):
+                    print(f"Bobbin {bobbin_name} not found in the database.")
+                else:                    
+                    # Append bobbin geometry
+                    geometrical_description.append(data)
+                    bobbin_part = data
 
             # Split out the geometry that is the "core" (spacers, half sets, toroidal)
             core_geometry = []
@@ -242,7 +243,7 @@ class FreeCADBuilder:
             else:
                 return pieces_to_export
 
-        except:
+        except:  # noqa: E722
             # In the event of an error, attempt to save a debug file
             with contextlib.suppress(NameError):
                 document = FreeCAD.ActiveDocument
@@ -250,7 +251,6 @@ class FreeCADBuilder:
                     document.saveAs(f"{output_path}/error.FCStd")
                     FreeCAD.closeDocument(document.Name)
             return None, None
-
 
     def get_spacer(self, geometrical_data):
         import FreeCAD
@@ -275,7 +275,12 @@ class FreeCADBuilder:
         document.recompute()
         return spacer
 
-    def get_core(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
+    def get_core(self, 
+                 project_name, 
+                 geometrical_description, 
+                 output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', 
+                 save_files=True, 
+                 export_files=True):
         import FreeCAD
         try:
             pieces_to_export = []
