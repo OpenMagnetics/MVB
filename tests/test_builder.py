@@ -24,6 +24,82 @@ class Tests(unittest.TestCase):
     def tearDownClass(cls):
         print("\nFinishing tests for builder")
 
+    def test_all_magnetic_generated(self):
+        dummyGapping = [
+            {
+                'length': 0.0001,
+                'type': 'additive'
+            },
+            {
+                'length': 0.0001,
+                'type': 'additive'
+            },
+            {
+                'length': 0.0001,
+                'type': 'additive'
+            }
+        ]
+
+        dummyCore = {
+            "functionalDescription": {
+                "name": "dummy",
+                "type": "two-piece set",
+                "material": "N97",
+                "shape": None,
+                "gapping": dummyGapping,
+                "numberStacks": 1
+            }
+        }
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
+            for ndjson_line in f:
+                data = json.loads(ndjson_line)
+                if data["family"] not in ['pq', 'rm', 'e']:
+                    continue 
+                core = copy.deepcopy(dummyCore)
+                if data['family'] in ['t']:
+                    core['functionalDescription']['type'] = "toroidal"
+                if data['family'] in ['ut']:
+                    core['functionalDescription']['type'] = "closed shape"
+                core['functionalDescription']['shape'] = data
+
+                if data['family'] in ['t']:
+                    core['functionalDescription']['gapping'] = []
+                else:
+                    gapping = []
+                    core_datum = PyMKF.calculate_core_data(core, False)
+                    core_datum['processedDescription'] = PyMKF.calculate_core_processed_description(core)
+                    for column_index, column in enumerate(core_datum['processedDescription']['columns']):
+                        aux = copy.deepcopy(dummyGapping[column_index])
+                        aux['coordinates'] = column['coordinates']
+                        gapping.append(aux)
+                    core['functionalDescription']['gapping'] = gapping
+
+                core_datum = PyMKF.calculate_core_data(core, False)
+                # import pprint
+                # pprint.pprint(core_datum['processedDescription'])
+                bobbin_name_aliases = core_datum['functionalDescription']['shape']['aliases']
+                bobbin_name = None
+                if bobbin_name_aliases:  # Check if there are any aliases
+                    for alias in bobbin_name_aliases:
+                        if alias.startswith("E"):
+                            bobbin_name = "Bobbin " + alias.replace(" ", "")  #TODO: This is only the case for E cores?
+                        else:
+                            bobbin_name = "Bobbin " + alias
+                if bobbin_name is None:
+                    continue
+                bobbin_datanum = PyMKF.find_bobbin_by_name(bobbin_name)
+                if bobbin_datanum is None or (isinstance(bobbin_datanum, dict) and any(isinstance(value, str) and 'Exception' in value for value in bobbin_datanum.values())):
+                    print(f"Bobbin '{bobbin_name}' not found in the database.")
+                    continue   
+                
+                core = builder.Builder("FreeCAD").get_magnetic(data['name'], core_datum['geometricalDescription'])                
+                print(core)
+                filename = f"{data['name']}_magnetic".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+                self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
+                self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
+
+  
+
     def test_all_bobbins_generated(self):
 
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/bobbins.ndjson', 'r') as f:
