@@ -197,8 +197,7 @@ class FreeCADBuilder:
                     geometrical_description=core_geometry,
                     output_path=output_path,
                     save_files=False,
-                    export_files=False,
-                    doc=document  # Pass in the existing doc
+                    export_files=False
                 )
             else:
                 core_outputs = []
@@ -305,8 +304,7 @@ class FreeCADBuilder:
                  geometrical_description, 
                  output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', 
                  save_files=True, 
-                 export_files=True,
-                 doc=None):
+                 export_files=True):
         import FreeCAD
         try:
             pieces_to_export = []
