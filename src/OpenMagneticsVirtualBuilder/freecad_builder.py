@@ -134,19 +134,44 @@ class FreeCADBuilder:
             # Detect or insert bobbin geometry
             bobbin_part = next((part for part in geometrical_description
                                 if part['type'] == 'bobbin'), None)
+            core_part = next((part for part in geometrical_description
+                              if part['type'] == 'half set' or part['type'] == 'toroidal'), None)
 
-            if not bobbin_part:
+            if not bobbin_part and core_part:
                 # No bobbin was found; try to deduce from the first part's name
-                core_name = geometrical_description[0]['shape']['name']
-                bobbin_name = core_name.replace("E", "Bobbin")
-                data = PyMKF.find_bobbin_by_name(bobbin_name)
-                #TODO. this does not work for all the cores. Bobbinname is differnt than the core name
-                if data is None or (isinstance(data, dict) and any(isinstance(value, str) and 'Exception' in value for value in data.values())):
-                    print(f"Bobbin {bobbin_name} not found in the database.")
-                else:                    
-                    # Append bobbin geometry
-                    geometrical_description.append(data)
-                    bobbin_part = data
+                bobbin_name_aliases = core_part['shape']['aliases']
+                bobbin_name = None
+                for alias in bobbin_name_aliases:
+                    if alias.startswith("E"):
+                        bobbin_name = "Bobbin " + alias.replace(" ", "")  #TODO: This is only the case for E cores?
+                    else:
+                        bobbin_name = "Bobbin " + alias
+                if bobbin_name is not None:          
+                    bobbin_datanum = PyMKF.find_bobbin_by_name(bobbin_name)
+                    if bobbin_datanum is None or (isinstance(bobbin_datanum, dict) and any(isinstance(value, str) and 'Exception' in value for value in bobbin_datanum.values())):
+                        print(f"Bobbin not found in the database.")
+                    else:                    
+                        # Append bobbin geometry
+                        bobbin_geometrical_descriptin = {}
+                        bobbin_geometrical_descriptin['coordinates'] = bobbin_datanum['processedDescription']['coordinates']
+                        bobbin_geometrical_descriptin['dimensions'] = None
+                        bobbin_geometrical_descriptin['insulationMaterial'] = None
+                        bobbin_geometrical_descriptin['machining'] = None
+                        bobbin_geometrical_descriptin['material'] = 'plastic'
+                        bobbin_geometrical_descriptin['rotation'] = [0, 0, 0]
+                        bobbin_shape = {}
+                        # bobbin_shape['aliases'] = ['E 65/27', 'E65/27', 'EE 65/27', 'EE65/27', 'EE 65/32/27', 'EE65/32/27']
+                        bobbin_shape['dimensions'] = bobbin_datanum['functionalDescription']['dimensions']
+
+                        bobbin_shape['family'] = bobbin_datanum['functionalDescription']['family']
+                        bobbin_shape['familySubtype'] = None
+                        bobbin_shape['magneticCircuit'] = 'open'
+                        bobbin_shape['name'] = bobbin_datanum['name']
+                        bobbin_shape['type'] = 'standard'
+                        bobbin_shape['shape'] =  bobbin_datanum['functionalDescription']['shape']
+                        bobbin_geometrical_descriptin['shape'] = bobbin_shape
+                        bobbin_geometrical_descriptin['type'] = 'bobbin'                    
+                        geometrical_description.append(bobbin_geometrical_descriptin)
 
             # Split out the geometry that is the "core" (spacers, half sets, toroidal)
             core_geometry = []
