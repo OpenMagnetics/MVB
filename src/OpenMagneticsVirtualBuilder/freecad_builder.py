@@ -9,6 +9,7 @@ import pathlib
 import platform
 sys.path.append(os.path.dirname(__file__))
 import utils
+import PyMKF
 
 file_dir = os.path.dirname(__file__)
 sys.path.append(file_dir)
@@ -119,6 +120,164 @@ class FreeCADBuilder:
             for shaper in self.shapers
         }
 
+    def get_magnetic(self,
+                 project_name,
+                 geometrical_description,
+                 output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/',
+                 save_files=True,
+                 export_files=True,
+                 include_core=True,
+                 include_spacer=False,
+                 include_winding=False,
+                 include_bobbin=True):
+        import FreeCAD
+        try:
+            # Ensure output path
+            os.makedirs(output_path, exist_ok=True)
+            pieces_to_export = []
+            close_file_after_finishing = False
+            if FreeCAD.ActiveDocument is None:
+                close_file_after_finishing = True
+                FreeCAD.newDocument(project_name + "_magnetic")
+            document = FreeCAD.ActiveDocument
+            
+            if include_core:
+                core_geometries = [part for part in geometrical_description 
+                                  if part['type'] == 'half set' or part['type'] == 'toroidal' or part['type'] == 'spacer']
+
+                # We need a document to keep everything in the same place
+
+
+                # 1) Build the core pieces using get_core, but do NOT export/save yet
+                core_outputs = None
+                if core_geometries:
+                    core_outputs = self.get_core(
+                        project_name=project_name + "_magnetic_core",
+                        geometrical_description=core_geometries,
+                        output_path=output_path,
+                        save_files=False,
+                        export_files=False,
+                        include_spacer=include_spacer,
+                    )
+                else:
+                    core_outputs = []
+                # (core_outputs will be either a list of shapes or (None, None) if something failed)
+                if isinstance(core_outputs, list):
+                    pieces_to_export.extend(core_outputs)
+            
+            if include_bobbin:
+                # Detect or insert bobbin geometry
+                bobbin_geometies = [part for part in geometrical_description
+                                if part['type'] == 'bobbin']
+                
+                if not bobbin_geometies:  
+                    # No bobbin was found; try to deduce from the first part's name
+                    bobbin_name_aliases = core_geometries[0]['shape']['aliases']
+                    bobbin_name = None
+                    for alias in bobbin_name_aliases:
+                        if alias.startswith("E"):
+                            bobbin_name = "Bobbin " + alias.replace(" ", "")  #TODO: This is only the case for E cores?
+                        else:
+                            bobbin_name = "Bobbin " + alias
+                    if bobbin_name is not None:          
+                        bobbin_datanum = PyMKF.find_bobbin_by_name(bobbin_name)
+                        if bobbin_datanum is None or (isinstance(bobbin_datanum, dict) and any(isinstance(value, str) and 'Exception' in value for value in bobbin_datanum.values())):
+                            print(f"Bobbin not found in the database.")
+                        else:                    
+                            # Append bobbin geometry
+                            bobbin_geometrical_descriptin = {}
+                            bobbin_geometrical_descriptin['coordinates'] = bobbin_datanum['processedDescription']['coordinates']
+                            bobbin_geometrical_descriptin['dimensions'] = None
+                            bobbin_geometrical_descriptin['insulationMaterial'] = None
+                            bobbin_geometrical_descriptin['machining'] = None
+                            bobbin_geometrical_descriptin['material'] = 'plastic'
+                            bobbin_geometrical_descriptin['rotation'] = [0, 0, 0]
+                            bobbin_shape = {}
+                            # bobbin_shape['aliases'] = ['E 65/27', 'E65/27', 'EE 65/27', 'EE65/27', 'EE 65/32/27', 'EE65/32/27']
+                            bobbin_shape['dimensions'] = bobbin_datanum['functionalDescription']['dimensions']
+
+                            bobbin_shape['family'] = bobbin_datanum['functionalDescription']['family']
+                            bobbin_shape['familySubtype'] = None
+                            bobbin_shape['magneticCircuit'] = 'open'
+                            bobbin_shape['name'] = bobbin_datanum['name']
+                            bobbin_shape['type'] = 'standard'
+                            bobbin_shape['shape'] =  bobbin_datanum['functionalDescription']['shape']
+                            bobbin_geometrical_descriptin['shape'] = bobbin_shape
+                            bobbin_geometrical_descriptin['type'] = 'bobbin'                    
+  
+                            bobbin_geometies.append(bobbin_geometrical_descriptin)
+              
+                # 2) Build/Place each bobbin part in the same document
+                if bobbin_geometies:
+                    for index, geometrical_part in enumerate(bobbin_geometies):
+                        shape_data = geometrical_part['shape']
+                        part_builder = FreeCADBuilder().factory(shape_data)
+                        bobbin = part_builder.get_bobbin(data=copy.deepcopy(shape_data),
+                                                        name=f"Bobbin_{index}",
+                                                        save_files=False,
+                                                        export_files=False)
+
+                        m = bobbin.Placement.Matrix
+                        m.rotateX(geometrical_part['rotation'][2])
+                        m.rotateY(geometrical_part['rotation'][0])
+                        m.rotateZ(geometrical_part['rotation'][1])
+                        bobbin.Placement.Matrix = m
+                        document.recompute()
+
+                        bobbin.Placement.move(FreeCAD.Vector(
+                            geometrical_part['coordinates'][2] * 1000,
+                            geometrical_part['coordinates'][0] * 1000,
+                            geometrical_part['coordinates'][1] * 1000
+                        ))
+                        document.recompute()
+                        pieces_to_export.append(bobbin)
+
+            if include_winding:
+                raise NotImplementedError("Windings are not implemented yet.")
+            
+            # Final labeling, exporting, saving if the user asked for it
+            if export_files and pieces_to_export:
+                # Label them so you can differentiate after the export
+                for i, piece in enumerate(pieces_to_export):
+                    piece.Label = f"mag_part_{i}"
+
+                import Import
+                import Mesh
+
+                final_project_name = f"{project_name}_magnetic".replace(" ", "_") \
+                                                            .replace("-", "_") \
+                                                            .replace("/", "_") \
+                                                            .replace(".", "__")
+                step_path = f"{output_path}{os.path.sep}{final_project_name}.step"
+                obj_path  = f"{output_path}{os.path.sep}{final_project_name}.obj"
+
+                Import.export(pieces_to_export, step_path)
+                Mesh.export(pieces_to_export, obj_path)
+
+            if save_files:
+                final_project_name = f"{project_name}_magnetic".replace(" ", "_") \
+                                                                .replace("-", "_") \
+                                                                .replace("/", "_") \
+                                                                .replace(".", "__")
+                document.saveAs(f"{output_path}{os.path.sep}{final_project_name}.FCStd")
+
+            if close_file_after_finishing:
+                FreeCAD.closeDocument(document.Name)
+
+            if export_files and pieces_to_export:
+                return (step_path, obj_path)
+            else:
+                return pieces_to_export
+
+        except:  # noqa: E722
+            # In the event of an error, attempt to save a debug file
+            with contextlib.suppress(NameError):
+                document = FreeCAD.ActiveDocument
+                if document:
+                    document.saveAs(f"{output_path}/error.FCStd")
+                    FreeCAD.closeDocument(document.Name)
+            return None, None
+
     def get_spacer(self, geometrical_data):
         import FreeCAD
         document = FreeCAD.ActiveDocument
@@ -142,7 +301,13 @@ class FreeCADBuilder:
         document.recompute()
         return spacer
 
-    def get_core(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
+    def get_core(self, 
+                 project_name, 
+                 geometrical_description, 
+                 output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', 
+                 save_files=True, 
+                 export_files=True,
+                 include_spacer=True):
         import FreeCAD
         try:
             pieces_to_export = []
@@ -158,7 +323,7 @@ class FreeCADBuilder:
             document = FreeCAD.ActiveDocument
 
             for index, geometrical_part in enumerate(geometrical_description):
-                if geometrical_part['type'] == 'spacer':
+                if include_spacer and geometrical_part['type'] == 'spacer':
                     spacer = self.get_spacer(geometrical_part)
                     pieces_to_export.append(spacer)
                 elif geometrical_part['type'] in ['half set', 'toroidal']:
@@ -782,6 +947,78 @@ class FreeCADBuilder:
             except:  # noqa: E722
                 FreeCAD.closeDocument(project_name)
                 return None, None
+
+        def get_bobbin(self, data, name="Piece", save_files=False, export_files=True):
+            # try:
+                import FreeCAD
+                close_file_after_finishing = FreeCAD.ActiveDocument is None
+                project_name = f"{data['shape']}_bobbin".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+                data["dimensions"] = flatten_dimensions(data)
+
+                if FreeCAD.ActiveDocument is None:
+                    FreeCAD.newDocument(project_name)
+                document = FreeCAD.ActiveDocument
+
+                sketch = self.create_sketch()
+                self.get_bobbin_base(data, sketch)
+                height = self.get_bobbin_height(data["dimensions"])
+
+                document = FreeCAD.ActiveDocument
+                document.recompute()
+
+                part_name = "bobbin"
+                
+                base = self.extrude_sketch(
+                    sketch=sketch,
+                    part_name=part_name,
+                    height=height
+                )
+
+                document.recompute()
+
+                negative_bobbin_tool = self.get_negative_bobbin(data["dimensions"])
+
+                if negative_bobbin_tool is None:
+                    piece_cut = base
+                else:
+                    piece_cut = document.addObject("Part::Cut", "Cut")
+                    piece_cut.Base = base
+                    piece_cut.Tool = negative_bobbin_tool
+                    document.recompute()
+
+                piece_with_extra = self.get_shape_extras(data, piece_cut)
+
+                piece = document.addObject('Part::Refine', name)
+                piece.Source = piece_with_extra
+
+                document.recompute()
+
+                if data["family"] != 't':
+                    piece.Placement.move(FreeCAD.Vector(0, 0, -height / 2))
+                else:
+                    raise Exception("Bobbin family 't' not implemented")
+                document.recompute()
+
+                pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
+
+                if export_files:
+                    import Import
+                    import Mesh
+                    Import.export([piece], f"{self.output_path}/{project_name}.step")
+                    Mesh.export([piece], f"{self.output_path}/{project_name}.obj")
+
+                if save_files:
+                    document.saveAs(f"{self.output_path}/{project_name}.FCStd")
+
+                if not close_file_after_finishing:
+                    return piece
+                FreeCAD.closeDocument(project_name)
+                return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.obj"
+            # except:  # noqa: E722
+            #     with contextlib.suppress(NameError):
+            #         FreeCAD.closeDocument(project_name)
+            #     return (None, None) if close_file_after_finishing else None
 
         def get_piece(self, data, name="Piece", save_files=False, export_files=True):
             import FreeCAD
@@ -1557,6 +1794,47 @@ class FreeCADBuilder:
         def get_dimensions_and_subtypes(self):
             return {1: ["A", "B", "C", "D", "E", "F", "G"]} 
 
+        def get_bobbin_height(self, dimensions):
+            return dimensions["H1"]
+        
+        def get_negative_bobbin(self, dimensions):
+            import FreeCAD
+            document = FreeCAD.ActiveDocument
+
+            bobbin_core_window_cyl = document.addObject("Part::Cylinder", "core_column_cylinder")
+            bobbin_core_window_cyl.Radius = dimensions["D3"] / 2
+            bobbin_core_window_cyl.Height = dimensions["H1"]
+            document.recompute()
+
+            winding_window_cyl = document.addObject("Part::Cylinder", "bobbin_window_cylinder")
+            winding_window_cyl.Radius = dimensions["D1"] / 2
+            winding_window_cyl.Height = dimensions["H2"]
+            winding_window_cyl.Placement = FreeCAD.Placement(FreeCAD.Vector(0, 0, (dimensions["H1"] - dimensions["H2"]) / 2), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            central_column_cyl = document.addObject("Part::Cylinder", "bobbin_wall_cylinder")
+            central_column_cyl.Radius = dimensions["D2"] / 2
+            central_column_cyl.Height = dimensions["H2"]
+            central_column_cyl.Placement = FreeCAD.Placement(FreeCAD.Vector(0, 0, (dimensions["H1"] - dimensions["H2"]) / 2), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            negative_winding_window = document.addObject("Part::Cut", "negative_winding_window")
+            negative_winding_window.Base = winding_window_cyl
+            negative_winding_window.Tool = central_column_cyl
+            document.recompute()
+
+            # Fuse the two shapes above 
+            winding_window_aux = document.addObject("Part::MultiFuse", "Fusion")
+            winding_window_aux.Shapes = [negative_winding_window, bobbin_core_window_cyl]
+            document.recompute()
+
+            return winding_window_aux
+        
+        def get_bobbin_base(self, data, sketch):
+            import FreeCAD
+            import Part
+            dimensions = data["dimensions"]
+
+            sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["D1"] / 2), False)
+
         def get_shape_base(self, data, sketch):
             import FreeCAD
             import Part
@@ -1685,6 +1963,46 @@ class FreeCADBuilder:
                 3: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
                 4: ["A", "B", "C", "D", "E", "F", "G", "H", "J"]
             }
+
+        def get_bobbin_height(self, dimensions):
+            return dimensions["H2"]
+
+        def get_negative_bobbin(self, dimensions):
+            import FreeCAD
+            document = FreeCAD.ActiveDocument
+
+            bobbin_core_window_cyl = document.addObject("Part::Cylinder", "core_column_cylinder")
+            bobbin_core_window_cyl.Radius = dimensions["D3"] / 2
+            bobbin_core_window_cyl.Height = dimensions["H2"]
+            document.recompute()
+
+            winding_window_cyl = document.addObject("Part::Cylinder", "bobbin_window_cylinder")
+            winding_window_cyl.Radius = dimensions["D1"] / 2
+            winding_window_cyl.Height = dimensions["H2"] - dimensions["H4"] - dimensions["H5"]
+            winding_window_cyl.Placement = FreeCAD.Placement(FreeCAD.Vector(0, 0, dimensions["H4"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            central_column_cyl = document.addObject("Part::Cylinder", "bobbin_wall_cylinder")
+            central_column_cyl.Radius = dimensions["D2"] / 2
+            central_column_cyl.Height = dimensions["H2"] - dimensions["H4"] - dimensions["H5"]
+            central_column_cyl.Placement = FreeCAD.Placement(FreeCAD.Vector(0, 0, dimensions["H4"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+            # subtract the bobbin window from the wall
+            negative_winding_window = document.addObject("Part::Cut", "negative_winding_window")
+            negative_winding_window.Base = winding_window_cyl
+            negative_winding_window.Tool = central_column_cyl
+            document.recompute()
+
+            # Fuse the two shapes above 
+            winding_window_aux = document.addObject("Part::MultiFuse", "Fusion")
+            winding_window_aux.Shapes = [negative_winding_window, bobbin_core_window_cyl]
+            document.recompute()
+
+            return winding_window_aux
+
+        def get_bobbin_base(self, data, sketch):
+            import FreeCAD
+            import Part
+            dimensions = data["dimensions"]
+            sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["D1"] / 2), False)
 
         def get_shape_base(self, data, sketch):
             import FreeCAD
@@ -1977,6 +2295,69 @@ class FreeCADBuilder:
             sketch.addConstraint(Sketcher.Constraint('DistanceY', top_line, 1, -1, 1, -a))
             sketch.addConstraint(Sketcher.Constraint('DistanceX', left_line, 1, -1, 1, c))
             sketch.addConstraint(Sketcher.Constraint('DistanceX', right_line, 1, -1, 1, -c))
+            sketch.addConstraint(Sketcher.Constraint('Vertical', right_line))
+            sketch.addConstraint(Sketcher.Constraint('Vertical', left_line))
+            sketch.addConstraint(Sketcher.Constraint('Horizontal', top_line))
+            sketch.addConstraint(Sketcher.Constraint('Horizontal', bottom_line))
+
+        def get_bobbin_height(self, dimensions):
+            return dimensions["l2"]
+
+        def get_negative_bobbin(self, dimensions):
+            import FreeCAD
+            document = FreeCAD.ActiveDocument
+
+            bobbin_core_window_cube = document.addObject("Part::Box", "core_column_cube")
+            bobbin_core_window_cube.Length = dimensions["c"]
+            bobbin_core_window_cube.Width = dimensions["f"]
+            bobbin_core_window_cube.Height = dimensions["l2"]
+            bobbin_core_window_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["c"] / 2, -dimensions["f"] / 2, 0), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+            document.recompute()
+
+            winding_window_cube = document.addObject("Part::Box", "bobbin_window_cube")
+            winding_window_cube.Length = dimensions["k"]
+            winding_window_cube.Width = dimensions["e"]
+            winding_window_cube.Height = dimensions["l2"] - 2 * dimensions["s2"]
+            winding_window_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["k"] / 2, -dimensions["e"] / 2, dimensions["s2"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            central_column_cube = document.addObject("Part::Box", "bobbin_wall_cube")
+            central_column_cube.Length = dimensions["c"] + 2 * dimensions["s1"]
+            central_column_cube.Width = dimensions["f"] + 2 * dimensions["s1"]
+            central_column_cube.Height = dimensions["l2"] - 2 * dimensions["s2"]
+            central_column_cube.Placement = FreeCAD.Placement(FreeCAD.Vector(-dimensions["c"] / 2 - dimensions["s2"], -dimensions["f"] / 2 - dimensions["s2"], dimensions["s2"]), FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00))
+
+            negative_winding_window = document.addObject("Part::Cut", "negative_winding_window")
+            negative_winding_window.Base = winding_window_cube
+            negative_winding_window.Tool = central_column_cube
+            document.recompute()
+
+            # Fuse the two shapes above 
+            winding_window_aux = document.addObject("Part::MultiFuse", "Fusion")
+            winding_window_aux.Shapes = [negative_winding_window, bobbin_core_window_cube]
+            document.recompute()
+
+            return winding_window_aux
+
+        def get_bobbin_base(self, data, sketch):
+            import FreeCAD
+            import Part
+            import Sketcher
+            dimensions = data["dimensions"]
+            e = dimensions["e"] / 2
+            k = dimensions["k"] / 2
+
+            top_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-k, e, 0), FreeCAD.Vector(k, e, 0)), False)
+            right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(k, e, 0), FreeCAD.Vector(k, -e, 0)), False)
+            bottom_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(k, -e, 0), FreeCAD.Vector(-k, -e, 0)), False)
+            left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-k, -e, 0), FreeCAD.Vector(-k, e, 0)), False)
+            sketch.addConstraint(Sketcher.Constraint('Coincident', top_line, 2, right_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', right_line, 2, bottom_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', bottom_line, 2, left_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', left_line, 2, top_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('DistanceY', bottom_line, 1, -1, 1, e))
+            sketch.addConstraint(Sketcher.Constraint('DistanceY', top_line, 1, -1, 1, -e))
+            sketch.addConstraint(Sketcher.Constraint('DistanceX', left_line, 1, -1, 1, k))
+            sketch.addConstraint(Sketcher.Constraint('DistanceX', right_line, 1, -1, 1, -k))
             sketch.addConstraint(Sketcher.Constraint('Vertical', right_line))
             sketch.addConstraint(Sketcher.Constraint('Vertical', left_line))
             sketch.addConstraint(Sketcher.Constraint('Horizontal', top_line))
@@ -3144,6 +3525,7 @@ class FreeCADBuilder:
             return svgFile_data
 
         def apply_machining(self, piece, machining, dimensions):
+            import FreeCAD
             document = FreeCAD.ActiveDocument
 
             tool = document.addObject("Part::Box", "tool")
