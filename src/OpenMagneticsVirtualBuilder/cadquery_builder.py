@@ -993,9 +993,8 @@ class CadQueryBuilder:
         def get_shape_extras(self, data, piece):
             dimensions = data["dimensions"]
             piece = piece.translate((0, 0, -dimensions["B"]))
-            fillet_radius = (dimensions["B"] - dimensions["D"]) / 2
-
-            piece = piece.edges("|X").edges("<Y").edges(">Z").fillet(fillet_radius)
+            # fillet_radius = (dimensions["B"] - dimensions["D"]) / 2
+            # piece = piece.edges("|X").edges("<Y").edges("<Z").fillet(fillet_radius)
             return piece
 
         def get_negative_winding_window(self, dimensions):

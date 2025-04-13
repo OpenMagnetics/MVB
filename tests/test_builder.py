@@ -32,8 +32,8 @@ class Tests(unittest.TestCase):
                 if data["family"] not in ['ui', 'pqi', 'ut']:
                     # if data['name'] != "T 22/14/13":
                     # if data['family'] != "c":
-                    # if data['family'] != "planar el":
-                        # continue
+                    if data['family'] != "p":
+                        continue
 
                     print(data["name"])
                     core = builder.Builder().factory(data)
@@ -51,9 +51,9 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'pqi']:
-                    # if data['family'] != "ut":
-                    #     continue
-                    core = builder.Builder().factory(data)
+                    if data['family'] != "efd":
+                        continue
+                    core = builder.Builder("FreeCAD").factory(data)
                     print(data["name"])
                     core.get_piece_technical_drawing(data, colors=colors, save_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -62,7 +62,7 @@ class Tests(unittest.TestCase):
 
     def test_get_families(self):
         
-        families = builder.Builder().get_families()
+        families = builder.Builder("FreeCAD").get_families()
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
@@ -99,9 +99,9 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut', 'pqi']:
-                    if data['family'] != "c":
+                    # if data['family'] != "c":
                     # if data['name'] != "T 22/14/13":
-                        continue
+                        # continue
 
                     core = copy.deepcopy(dummyCore)
                     if data['family'] in ['t']:
@@ -122,7 +122,7 @@ class Tests(unittest.TestCase):
 
                         core['functionalDescription']['gapping'] = gapping
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder().get_core(data['name'], core_datum['geometricalDescription'])
+                    core = builder.Builder("FreeCAD").get_core(data['name'], core_datum['geometricalDescription'])
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
@@ -178,7 +178,7 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = []
 
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder().get_core(data['name'], core_datum['geometricalDescription'])
+                    core = builder.Builder("FreeCAD").get_core(data['name'], core_datum['geometricalDescription'])
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
@@ -238,7 +238,7 @@ class Tests(unittest.TestCase):
                     # import pprint
                     # pprint.pprint(core_datum['processedDescription'])
                     # pprint.pprint(core_datum['geometricalDescription'])
-                    core = builder.Builder().get_core(data['name'], core_datum['geometricalDescription'])
+                    core = builder.Builder("FreeCAD").get_core(data['name'], core_datum['geometricalDescription'])
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
@@ -294,7 +294,7 @@ class Tests(unittest.TestCase):
 
                     print(data["name"])
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder().get_core_gapping_technical_drawing(data['name'], core_datum)
+                    core = builder.Builder("FreeCAD").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -350,7 +350,7 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = gapping
 
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder().get_core_gapping_technical_drawing(data['name'], core_datum)
+                    core = builder.Builder("FreeCAD").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -407,7 +407,7 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = []
 
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder().get_core_gapping_technical_drawing(data['name'], core_datum)
+                    core = builder.Builder("FreeCAD").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -532,7 +532,24 @@ class Tests(unittest.TestCase):
                                                                       'height': 0.019,
                                                                       'radialHeight': None,
                                                                       'width': 0.0095}]}}
-        core = builder.Builder().get_core(core['functionalDescription']['shape']['name'], core['geometricalDescription'])
+        core = builder.Builder("FreeCAD").get_core(core['functionalDescription']['shape']['name'], core['geometricalDescription'])
+
+        # filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+        # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
+        # self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_core_gaps_FrontView.svg"))
+
+    def test_1(self):
+        colors = {
+            "projection_color": "#d4d4d4",
+            "dimension_color": "#d4d4d4"
+        }
+        coreShape = {'family': 'p', 'type': 'standard', 'aliases': [], 'dimensions': {'A': 0.0424, 'B': 0.0147, 'C': 0.0319, 'D': 0.010249999999999999, 'E': 0.0363, 'F': 0.0174, 'G': 0.0051, 'H': 0.006500000000000001, 'M': 0.0, 'N': 0.0, 'r1': 0.0}, 'familySubtype': '2', 'magneticCircuit': 'open', 'name': 'P 42/29'}
+        core_builder = builder.Builder("FreeCAD").factory(coreShape)
+        colors = {
+            "projection_color": "#d4d4d4",
+            "dimension_color": "#d4d4d4"
+        }
+        views = core_builder.get_piece_technical_drawing(coreShape, colors, save_files=True)
 
         # filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
         # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -559,7 +576,7 @@ if __name__ == '__main__':  # pragma: no cover
     #         'magneticCircuit': None,
     #         'name': 'Custom',
     #         'type': 'custom'}
-    # core = builder.Builder().factory(data)
+    # core = builder.Builder("FreeCAD").factory(data)
     # import pprint
     # pprint.pprint(data)
     # print("ea")
