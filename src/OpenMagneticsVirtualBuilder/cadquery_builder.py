@@ -461,10 +461,10 @@ class CadQueryBuilder:
         def get_shape_base(self, data):
             dimensions = data["dimensions"]
 
-            if "L" not in dimensions:
+            if "L" not in dimensions or dimensions["L"] == 0:
                 dimensions["L"] = dimensions["F"] + (dimensions["C"] - dimensions["F"]) / 3
 
-            if "J" not in dimensions:
+            if "J" not in dimensions or dimensions["J"] == 0:
                 dimensions["J"] = dimensions["F"] / 2
 
             if "G" in dimensions:
@@ -663,7 +663,7 @@ class CadQueryBuilder:
             b = dimensions["b"] / 2
             t = dimensions["t"]
 
-            if 'alpha' not in dimensions:
+            if 'alpha' not in dimensions or dimensions["alpha"] == 0:
                 if familySubtype == '1':
                     dimensions["alpha"] = 120
                 else:

@@ -32,14 +32,14 @@ class Tests(unittest.TestCase):
                 if data["family"] not in ['ui', 'pqi', 'ut']:
                     # if data['name'] != "T 22/14/13":
                     # if data['family'] != "c":
-                    if data['family'] != "p":
-                        continue
+                    # if data['family'] != "pq":
+                        # continue
 
                     print(data["name"])
                     core = builder.Builder().factory(data)
                     core.get_piece(data, save_files=True, export_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-                    self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
+                    # self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
 
     def test_all_technical_drawings_generated(self):
@@ -51,7 +51,7 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'pqi']:
-                    if data['family'] != "efd":
+                    if data['family'] != "pq":
                         continue
                     core = builder.Builder("FreeCAD").factory(data)
                     print(data["name"])

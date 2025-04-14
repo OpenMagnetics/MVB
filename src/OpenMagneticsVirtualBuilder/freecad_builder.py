@@ -1227,7 +1227,7 @@ class FreeCADBuilder:
                     internal_vertexes.append(internal_bottom_left_vertex[0])
 
                 if familySubtype == '2':
-                    if "C" not in dimensions:
+                    if "C" not in dimensions or dimensions["C"] == 0:
                         internal_xmax = dimensions["E"] / 2 + (dimensions["A"] - dimensions["E"]) / 4
                     else:
                         internal_xmax = internal_xmin
@@ -1350,6 +1350,7 @@ class FreeCADBuilder:
             tube.OuterRadius = dimensions["E"] / 2
             tube.Placement = FreeCAD.Placement(FreeCAD.Vector(0, 0, dimensions["B"] - dimensions["D"]), FreeCAD.Rotation(90, 0, 0))
             document.recompute()
+            tube.Visibility = False
 
             return tube
 
@@ -1363,10 +1364,10 @@ class FreeCADBuilder:
             import Sketcher
             dimensions = data["dimensions"]
 
-            if "L" not in dimensions:
+            if "L" not in dimensions or dimensions["L"] == 0:
                 dimensions["L"] = dimensions["F"] + (dimensions["C"] - dimensions["F"]) / 3
 
-            if "J" not in dimensions:
+            if "J" not in dimensions or dimensions["J"] == 0:
                 dimensions["J"] = dimensions["F"] / 2
 
             if "G" in dimensions:
@@ -1437,30 +1438,45 @@ class FreeCADBuilder:
             sketch.addConstraint(Sketcher.Constraint('Block', long_bottom_right_line))
             sketch.addConstraint(Sketcher.Constraint('Block', long_bottom_left_line))
 
-            central_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["F"] / 2), False)
-            sketch.addConstraint(Sketcher.Constraint('Block', central_circle))
+            central_circle_right = sketch.addGeometry(Part.ArcOfCircle(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["F"] / 2), -math.pi / 6, math.pi / 6))
+            sketch.addConstraint(Sketcher.Constraint('Diameter', central_circle_right, dimensions["F"]))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', central_circle_right, 3, -1, 1))
+
             short_top_right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(dimensions["L"] / 2, dimensions["J"] / 2, 0), FreeCAD.Vector(dimensions["L"] / 4, dimensions["J"] / 2, 0)), False)
             short_bottom_right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(dimensions["L"] / 2, -dimensions["J"] / 2, 0), FreeCAD.Vector(dimensions["L"] / 4, -dimensions["J"] / 2, 0)), False)
-            sketch.addConstraint(Sketcher.Constraint('PointOnObject', short_top_right_line, 2, central_circle))
-            sketch.addConstraint(Sketcher.Constraint('PointOnObject', short_bottom_right_line, 2, central_circle))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', short_top_right_line, 2, central_circle_right, 2))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', short_bottom_right_line, 2, central_circle_right, 1))
+            sketch.addConstraint(Sketcher.Constraint('Angle', short_top_right_line, 2, short_bottom_right_line, 2, -math.pi / 2))
+            sketch.addConstraint(Sketcher.Constraint('Vertical', short_top_right_line, 2, short_bottom_right_line, 2))
+
             sketch.addConstraint(Sketcher.Constraint('Coincident', short_top_right_line, 1, long_top_right_line, 2))
             sketch.addConstraint(Sketcher.Constraint('Coincident', short_bottom_right_line, 1, long_bottom_right_line, 2))
-            sketch.addConstraint(Sketcher.Constraint('Perpendicular', central_circle, short_top_right_line)) 
-            sketch.addConstraint(Sketcher.Constraint('Perpendicular', central_circle, short_bottom_right_line)) 
+
+            central_circle_left = sketch.addGeometry(Part.ArcOfCircle(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["F"] / 2), math.pi - math.pi / 6, math.pi + math.pi / 6))
+            sketch.addConstraint(Sketcher.Constraint('Diameter', central_circle_left, dimensions["F"]))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', central_circle_left, 3, -1, 1))
 
             short_top_left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-dimensions["L"] / 2, dimensions["J"] / 2, 0), FreeCAD.Vector(-dimensions["L"] / 4, dimensions["J"] / 2, 0)), False)
             short_bottom_left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-dimensions["L"] / 2, -dimensions["J"] / 2, 0), FreeCAD.Vector(-dimensions["L"] / 4, -dimensions["J"] / 2, 0)), False)
-            sketch.addConstraint(Sketcher.Constraint('PointOnObject', short_top_left_line, 2, central_circle))
-            sketch.addConstraint(Sketcher.Constraint('PointOnObject', short_bottom_left_line, 2, central_circle))
+
+            sketch.addConstraint(Sketcher.Constraint('Coincident', short_top_left_line, 2, central_circle_left, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', short_bottom_left_line, 2, central_circle_left, 2))
+            # sketch.addConstraint(Sketcher.Constraint('Angle', short_top_left_line, 2, short_bottom_left_line, 2, math.pi / 2))
+            sketch.addConstraint(Sketcher.Constraint('Vertical', short_top_left_line, 2, short_bottom_left_line, 2))
+
+
+
+            # sketch.addConstraint(Sketcher.Constraint('PointOnObject', short_top_left_line, 2, central_circle))
+            # sketch.addConstraint(Sketcher.Constraint('PointOnObject', short_bottom_left_line, 2, central_circle))
             sketch.addConstraint(Sketcher.Constraint('Coincident', short_top_left_line, 1, long_top_left_line, 2))
             sketch.addConstraint(Sketcher.Constraint('Coincident', short_bottom_left_line, 1, long_bottom_left_line, 2))
-            sketch.addConstraint(Sketcher.Constraint('Perpendicular', central_circle, short_top_left_line)) 
-            sketch.addConstraint(Sketcher.Constraint('Perpendicular', central_circle, short_bottom_left_line)) 
+            # sketch.addConstraint(Sketcher.Constraint('Perpendicular', central_circle, short_top_left_line)) 
+            # sketch.addConstraint(Sketcher.Constraint('Perpendicular', central_circle, short_bottom_left_line)) 
 
             sketch.addConstraint(Sketcher.Constraint('Distance', short_bottom_left_line, 2, short_top_right_line, 2, dimensions["F"]))
 
-            sketch.trim(central_circle, FreeCAD.Vector(0, dimensions["F"] / 2, 0))
-            sketch.trim(central_circle, FreeCAD.Vector(0, -dimensions["F"] / 2, 0))
+            # sketch.trim(central_circle, FreeCAD.Vector(0, dimensions["F"] / 2, 0))
+            # sketch.trim(central_circle, FreeCAD.Vector(0, -dimensions["F"] / 2, 0))
 
             # internal_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["E"] / 2), False)
             # sketch.addConstraint(Sketcher.Constraint('Diameter', internal_circle, dimensions["E"]))
@@ -1621,7 +1637,7 @@ class FreeCADBuilder:
             b = dimensions["b"] / 2
             t = dimensions["t"]
 
-            if 'alpha' not in dimensions:
+            if 'alpha' not in dimensions or dimensions["alpha"] == 0:
                 if familySubtype == '1':
                     dimensions["alpha"] = 120
                 else:
@@ -1630,100 +1646,81 @@ class FreeCADBuilder:
             alpha = dimensions["alpha"] / 180 * math.pi
 
             beta = math.asin(g / e)
+            gamma = math.asin(b / a)
             xc = f
             z = c - e * math.cos(beta) + e * math.sin(beta)
 
             internal_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["H"] / 2), False)
-            central_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["F"] / 2), False)
-            external_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["A"] / 2), False)
-            winding_circle = sketch.addGeometry(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["E"] / 2), False)
-            sketch.addConstraint(Sketcher.Constraint('Coincident', central_circle, 3, -1, 1))
-            sketch.addConstraint(Sketcher.Constraint('Coincident', external_circle, 3, -1, 1))
+            external_circle_top_right = sketch.addGeometry(Part.ArcOfCircle(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["A"] / 2), math.pi / 2 - beta, math.pi / 2 - gamma))
+            external_circle_top_left = sketch.addGeometry(Part.ArcOfCircle(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["A"] / 2), math.pi / 2 + gamma, math.pi / 2 + beta))
+            external_circle_bottom_right = sketch.addGeometry(Part.ArcOfCircle(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["A"] / 2), 3 * math.pi / 2 + gamma, 3 * math.pi / 2 + beta))
+            external_circle_bottom_left = sketch.addGeometry(Part.ArcOfCircle(Part.Circle(FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(0, 0, 1), dimensions["A"] / 2), 3 * math.pi / 2 - beta, 3 * math.pi / 2 - gamma))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', external_circle_top_right, 3, -1, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', external_circle_top_left, 3, -1, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', external_circle_bottom_right, 3, -1, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', external_circle_bottom_left, 3, -1, 1))
             sketch.addConstraint(Sketcher.Constraint('Coincident', internal_circle, 3, -1, 1))
-            sketch.addConstraint(Sketcher.Constraint('Coincident', winding_circle, 3, -1, 1))
-            sketch.addConstraint(Sketcher.Constraint('Diameter', central_circle, dimensions["F"]))
-            sketch.addConstraint(Sketcher.Constraint('Diameter', external_circle, dimensions["A"]))
+            sketch.addConstraint(Sketcher.Constraint('Diameter', external_circle_top_right, dimensions["A"]))
+            sketch.addConstraint(Sketcher.Constraint('Diameter', external_circle_top_left, dimensions["A"]))
+            sketch.addConstraint(Sketcher.Constraint('Diameter', external_circle_bottom_right, dimensions["A"]))
+            sketch.addConstraint(Sketcher.Constraint('Diameter', external_circle_bottom_left, dimensions["A"]))
             sketch.addConstraint(Sketcher.Constraint('Diameter', internal_circle, dimensions["H"]))
-            sketch.addConstraint(Sketcher.Constraint('Diameter', winding_circle, dimensions["E"]))
 
             side_top_right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(e * math.cos(beta), e * math.sin(beta), 0), FreeCAD.Vector(xc, 0, 0)), False)
             side_bottom_right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(e * math.cos(beta), -e * math.sin(beta), 0), FreeCAD.Vector(xc, 0, 0)), False)
             side_top_left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-e * math.cos(beta), e * math.sin(beta), 0), FreeCAD.Vector(-xc, 0, 0)), False)
             side_bottom_left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-e * math.cos(beta), -e * math.sin(beta), 0), FreeCAD.Vector(-xc, 0, 0)), False)
 
-            sketch.addConstraint(Sketcher.Constraint('PointOnObject', side_top_right_line, 1, external_circle))
-            sketch.addConstraint(Sketcher.Constraint('PointOnObject', side_bottom_right_line, 1, external_circle))
-            sketch.addConstraint(Sketcher.Constraint('PointOnObject', side_top_left_line, 1, external_circle))
-            sketch.addConstraint(Sketcher.Constraint('PointOnObject', side_bottom_left_line, 1, external_circle))
-            sketch.addConstraint(Sketcher.Constraint('Vertical', side_top_right_line, 1, side_bottom_right_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Vertical', side_top_left_line, 1, side_bottom_left_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Horizontal', side_top_left_line, 1, side_top_right_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Horizontal', side_top_left_line, 2, side_top_right_line, 2))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', side_top_right_line, 1, external_circle_top_right, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', side_top_left_line, 1, external_circle_top_left, 2))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', side_bottom_left_line, 1, external_circle_bottom_left, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', side_bottom_right_line, 1, external_circle_bottom_right, 2))
             sketch.addConstraint(Sketcher.Constraint('Angle', side_top_right_line, 2, side_bottom_right_line, 2, -alpha))
             sketch.addConstraint(Sketcher.Constraint('Angle', side_top_left_line, 2, side_bottom_left_line, 2, alpha))
+            sketch.addConstraint(Sketcher.Constraint('Vertical', side_top_right_line, 1, side_bottom_right_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('Horizontal', side_top_left_line, 1, side_top_right_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('Horizontal', side_bottom_left_line, 1, side_bottom_right_line, 1))
+
             if familySubtype == '1':
-                sketch.addConstraint(Sketcher.Constraint('Horizontal', side_top_left_line, 2, -1, 1))
-                sketch.addConstraint(Sketcher.Constraint('PointOnObject', side_top_right_line, 2, central_circle))
-                sketch.addConstraint(Sketcher.Constraint('PointOnObject', side_top_left_line, 2, central_circle))
                 sketch.addConstraint(Sketcher.Constraint('Coincident', side_top_right_line, 2, side_bottom_right_line, 2))
                 sketch.addConstraint(Sketcher.Constraint('Coincident', side_top_left_line, 2, side_bottom_left_line, 2))
-
-                sketch.fillet(side_top_right_line, side_bottom_right_line, FreeCAD.Vector(e * math.cos(beta), e * math.sin(beta), 0), FreeCAD.Vector(e * math.cos(beta), -e * math.sin(beta), 0), a - c, True, False)
-                right_fillet = len(sketch.Geometry) - 1
-
-                sketch.addConstraint(Sketcher.Constraint('Vertical', right_fillet, 1, right_fillet, 2))
-                sketch.split(right_fillet, FreeCAD.Vector(c, 0, 0))
-                right_fillet_bottom = len(sketch.Geometry) - 1
-                sketch.addConstraint(Sketcher.Constraint('DistanceX', right_fillet_bottom, 1, -1, 1, -c))
-
-                sketch.fillet(side_top_left_line, side_bottom_left_line, FreeCAD.Vector(-e * math.cos(beta), e * math.sin(beta), 0), FreeCAD.Vector(-e * math.cos(beta), -e * math.sin(beta), 0), a - c, True, False)
-                left_fillet = len(sketch.Geometry) - 1
-                sketch.addConstraint(Sketcher.Constraint('Vertical', left_fillet, 1, left_fillet, 2))
-                sketch.split(left_fillet, FreeCAD.Vector(-c, 0, 0))
-                left_fillet_bottom = len(sketch.Geometry) - 1
-                sketch.addConstraint(Sketcher.Constraint('DistanceX', left_fillet_bottom, 1, -1, 1, c))
+                sketch.addConstraint(Sketcher.Constraint('DistanceY', side_top_left_line, 2, -1, 1, 0))
+                sketch.addConstraint(Sketcher.Constraint('DistanceX', side_top_left_line, 2, -1, 1, c))
+                sketch.addConstraint(Sketcher.Constraint('DistanceX', side_top_right_line, 2, -1, 1, -c))
             elif familySubtype == '2':
                 side_right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, z, 0), FreeCAD.Vector(c, -z, 0)), False)
                 side_left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, z, 0), FreeCAD.Vector(-c, -z, 0)), False)
                 sketch.addConstraint(Sketcher.Constraint('DistanceX', side_right_line, 1, -1, 1, -c))
                 sketch.addConstraint(Sketcher.Constraint('DistanceX', side_left_line, 1, -1, 1, c))
-                # sketch.addConstraint(Sketcher.Constraint('Symmetric', side_right_line, 1, side_right_line, 2, -1, 1)) 
 
-                # sketch.addConstraint(Sketcher.Constraint('DistanceY', side_right_line, 1, -1, 1, -z))
-                # sketch.addConstraint(Sketcher.Constraint('DistanceY', side_right_line, 2, -1, 1, z))
+                sketch.addConstraint(Sketcher.Constraint('DistanceY', side_left_line, 1, -1, 1, z))
+                sketch.addConstraint(Sketcher.Constraint('DistanceY', side_right_line, 1, -1, 1, z))
+                sketch.addConstraint(Sketcher.Constraint('DistanceY', side_right_line, 2, -1, 1, -z))
 
                 sketch.addConstraint(Sketcher.Constraint('Vertical', side_right_line, 1, side_right_line, 2))
                 sketch.addConstraint(Sketcher.Constraint('Vertical', side_left_line, 1, side_left_line, 2))
-                sketch.addConstraint(Sketcher.Constraint('Coincident', side_top_right_line, 2, side_right_line, 1))
-                sketch.addConstraint(Sketcher.Constraint('Coincident', side_bottom_right_line, 2, side_right_line, 2))
-                sketch.addConstraint(Sketcher.Constraint('Coincident', side_top_left_line, 2, side_left_line, 1))
-                sketch.addConstraint(Sketcher.Constraint('Coincident', side_bottom_left_line, 2, side_left_line, 2))
+                sketch.addConstraint(Sketcher.Constraint('Coincident', side_top_right_line, 2, side_right_line, 2))
+                sketch.addConstraint(Sketcher.Constraint('Coincident', side_bottom_right_line, 2, side_right_line, 1))
+                sketch.addConstraint(Sketcher.Constraint('Coincident', side_top_left_line, 2, side_left_line, 2))
+                sketch.addConstraint(Sketcher.Constraint('Coincident', side_bottom_left_line, 2, side_left_line, 1))
 
-            sketch.trim(winding_circle, FreeCAD.Vector(e, 0, 0))
-            sketch.addConstraint(Sketcher.Constraint('DistanceY', winding_circle, 1, -1, 1, -g))
-            sketch.addConstraint(Sketcher.Constraint('DistanceY', winding_circle, 2, -1, 1, g))
+            top_dent_left = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-b, a * math.cos(gamma), 0), FreeCAD.Vector(-b, a - t, 0)), False)
+            top_dent_bottom = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-b, a - t, 0), FreeCAD.Vector(b, a - t, 0)), False)
+            top_dent_right = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(b, a - t, 0), FreeCAD.Vector(b, a * math.cos(gamma), 0)), False)
+            sketch.addConstraint(Sketcher.Constraint('Block', top_dent_left))
+            sketch.addConstraint(Sketcher.Constraint('Block', top_dent_bottom))
+            sketch.addConstraint(Sketcher.Constraint('Block', top_dent_right))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', top_dent_left, 1, external_circle_top_left, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', top_dent_right, 2, external_circle_top_right, 2))
 
-            top_dent_left = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-b, a, 0), FreeCAD.Vector(-b, a - t, 0)), False)
-            sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-b, a - t, 0), FreeCAD.Vector(b, a - t, 0)), False)
-            top_dent_right = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(b, a - t, 0), FreeCAD.Vector(b, a, 0)), False)
-            sketch.trim(top_dent_left, FreeCAD.Vector(-b, a, 0))
-            sketch.trim(top_dent_right, FreeCAD.Vector(b, a, 0))
-
-            sketch.trim(external_circle, FreeCAD.Vector(-dimensions["A"] / 2, 0, 0))
-            sketch.trim(external_circle, FreeCAD.Vector(dimensions["A"] / 2, 0, 0))
-
-            external_circle_bottom = external_circle
-            external_circle_top = len(sketch.Geometry) - 1
-            sketch.trim(external_circle_top, FreeCAD.Vector(0, a, 0))
-
-            bottom_dent_left = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-b, -a, 0), FreeCAD.Vector(-b, -a + t, 0)), False)
-            sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-b, -a + t, 0), FreeCAD.Vector(b, -a + t, 0)), False)
-            bottom_dent_right = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(b, -a + t, 0), FreeCAD.Vector(b, -a, 0)), False)
-            sketch.trim(bottom_dent_left, FreeCAD.Vector(-b, -a, 0))
-            sketch.trim(bottom_dent_right, FreeCAD.Vector(b, -a, 0))
-            sketch.trim(external_circle_bottom, FreeCAD.Vector(0, -a, 0))
-            sketch.delGeometries([winding_circle])
-            sketch.delGeometries([central_circle])
+            bottom_dent_left = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-b, -(a * math.cos(gamma)), 0), FreeCAD.Vector(-b, -a + t, 0)), False)
+            bottom_dent_bottom = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-b, -a + t, 0), FreeCAD.Vector(b, -a + t, 0)), False)
+            bottom_dent_right = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(b, -a + t, 0), FreeCAD.Vector(b, -(a * math.cos(gamma)), 0)), False)
+            sketch.addConstraint(Sketcher.Constraint('Block', bottom_dent_left))
+            sketch.addConstraint(Sketcher.Constraint('Block', bottom_dent_bottom))
+            sketch.addConstraint(Sketcher.Constraint('Block', bottom_dent_right))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', bottom_dent_left, 1, external_circle_bottom_left, 2))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', bottom_dent_right, 2, external_circle_bottom_right, 1))
 
         def get_shape_extras(self, data, piece):
             # rotation in order to avoid cut in projection
@@ -2870,7 +2867,7 @@ class FreeCADBuilder:
             svgFile_data = ""
             svgFile_data += head
             svgFile_data += projetion_head
-            if 'F' not in dimensions:
+            if 'F' not in dimensions or dimensions["F"] == 0:
                 dimensions['F'] = dimensions['C']
 
             if view.Name == "TopView":
@@ -2894,7 +2891,7 @@ class FreeCADBuilder:
             if 'E' not in original_dimensions:
                 original_dimensions['E'] = original_dimensions['A'] - original_dimensions['F'] - original_dimensions['H']
 
-            if 'E' not in dimensions:
+            if 'E' not in dimensions or dimensions["E"] == 0:
                 dimensions['E'] = dimensions['A'] - dimensions['F'] - dimensions['H']
 
             if view.Name == "TopView":
