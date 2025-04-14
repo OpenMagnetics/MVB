@@ -32,7 +32,7 @@ class Tests(unittest.TestCase):
                 if data["family"] not in ['ui', 'pqi', 'ut']:
                     # if data['name'] != "T 22/14/13":
                     # if data['family'] != "c":
-                    # if data['family'] != "pq":
+                    # if data['family'] != "ur":
                         # continue
 
                     print(data["name"])
@@ -539,17 +539,26 @@ class Tests(unittest.TestCase):
         # self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_core_gaps_FrontView.svg"))
 
     def test_1(self):
+        core_shape = {'family': 'p', 'type': 'standard', 'aliases': [], 'dimensions': {'A': 0.0424, 'B': 0.0147, 'C': 0.0319, 'D': 0.010249999999999999, 'E': 0.0363, 'F': 0.0174, 'G': 0.0051, 'H': 0.006500000000000001, 'M': 0.0, 'N': 0.0, 'r1': 0.0}, 'familySubtype': '2', 'magneticCircuit': 'open', 'name': 'P 42/29'}
+        core_builder = builder.Builder("FreeCAD").factory(core_shape)
         colors = {
             "projection_color": "#d4d4d4",
             "dimension_color": "#d4d4d4"
         }
-        coreShape = {'family': 'p', 'type': 'standard', 'aliases': [], 'dimensions': {'A': 0.0424, 'B': 0.0147, 'C': 0.0319, 'D': 0.010249999999999999, 'E': 0.0363, 'F': 0.0174, 'G': 0.0051, 'H': 0.006500000000000001, 'M': 0.0, 'N': 0.0, 'r1': 0.0}, 'familySubtype': '2', 'magneticCircuit': 'open', 'name': 'P 42/29'}
-        core_builder = builder.Builder("FreeCAD").factory(coreShape)
+        views = core_builder.get_piece_technical_drawing(core_shape, colors, save_files=True)
+
+        # filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+        # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
+        # self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_core_gaps_FrontView.svg"))
+
+    def test_2(self):
+        core_shape = {"magneticCircuit": "open", "type": "standard", "family": "ur", "aliases": [], "name": "UR 64/40/20-D", "dimensions": {"A": {"nominal": 0.06400}, "D": {"nominal": 0.02650}, "C": {"nominal": 0.02400}, "E": {"minimum": 0.02320}, "H": {"nominal": 0.02000}, "B": {"nominal": 0.04050}, "G": {"nominal": 0.00510}, "F": {"nominal": 0.02000}, "S": {"nominal": 0.00200}}, "familySubtype": "4"}
+        core_builder = builder.Builder().factory(core_shape)
         colors = {
             "projection_color": "#d4d4d4",
             "dimension_color": "#d4d4d4"
         }
-        views = core_builder.get_piece_technical_drawing(coreShape, colors, save_files=True)
+        core_builder.get_piece(core_shape, save_files=True, export_files=True)
 
         # filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
         # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")

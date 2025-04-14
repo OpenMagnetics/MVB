@@ -1694,7 +1694,7 @@ class CadQueryBuilder:
                     .tag("winding_column")
                     .translate(translate)
                 )
-                translate = (-(dimensions["A"] - winding_column_width / 2 - dimensions["F"] / 2), 0, dimensions["B"] / 2)
+                translate = (-(dimensions["A"] - dimensions["F"] / 2 - dimensions["F"] / 2), 0, dimensions["B"] / 2)
                 lateral_column = (
                     cq.Workplane()
                     .cylinder(dimensions["B"], dimensions["F"] / 2)
@@ -1709,7 +1709,12 @@ class CadQueryBuilder:
                 else:
                     winding_column_width = dimensions["C"]
 
-                translate = (-(dimensions["A"] - winding_column_width / 2 - dimensions["S"] / 2), 0, dimensions["B"] / 2)
+                if "H" in dimensions:
+                    lateral_column_width = dimensions["H"]
+                else:
+                    lateral_column_width = dimensions["F"]
+
+                translate = (-(dimensions["A"] - lateral_column_width / 2 - dimensions["S"] / 2), 0, dimensions["B"] / 2)
                 lateral_hole_round_left = (
                     cq.Workplane()
                     .cylinder(dimensions["B"], dimensions["S"] / 2)
@@ -1717,7 +1722,7 @@ class CadQueryBuilder:
                     .translate(translate)
                 )
 
-                translate = (-(dimensions["A"] - winding_column_width / 2 - dimensions["S"] / 4), 0, dimensions["B"] / 2)
+                translate = (-(dimensions["A"] - lateral_column_width / 2 - dimensions["S"] / 4), 0, dimensions["B"] / 2)
                 lateral_hole_rectangular_left = (
                     cq.Workplane()
                     .box(dimensions["S"] / 2, dimensions["S"], dimensions["B"])
@@ -1727,10 +1732,10 @@ class CadQueryBuilder:
                 piece -= lateral_hole_round_left + lateral_hole_rectangular_left
 
                 translate = (winding_column_width / 2 - dimensions["S"] / 2, 0, dimensions["B"] / 2)
-                lateral_hole_round_roight = (
+                lateral_hole_round_right = (
                     cq.Workplane()
                     .cylinder(dimensions["B"], dimensions["S"] / 2)
-                    .tag("lateral_hole_round_roight")
+                    .tag("lateral_hole_round_right")
                     .translate(translate)
                 )
 
@@ -1741,7 +1746,7 @@ class CadQueryBuilder:
                     .tag("lateral_hole_rectangular_right")
                     .translate(translate)
                 )
-                piece -= lateral_hole_round_roight + lateral_hole_rectangular_right
+                piece -= lateral_hole_round_right + lateral_hole_rectangular_right
 
             piece = piece.translate((0, 0, -dimensions["B"]))
             return piece
