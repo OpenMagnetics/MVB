@@ -36,7 +36,7 @@ class Builder:
     Each shape will create a daughter of this class and define their own equations
     """
 
-    def __init__(self, engine="CadQuery"):
+    def __init__(self, engine="FreeCAD"):
         if engine == "FreeCAD":
             import freecad_builder
             self.engine = freecad_builder.FreeCADBuilder()

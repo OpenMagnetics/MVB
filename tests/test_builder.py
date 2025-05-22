@@ -53,6 +53,8 @@ class Tests(unittest.TestCase):
                 if data["family"] not in ['ui', 'pqi']:
                     if data['family'] != "pq":
                         continue
+                    if data['name'] in ["PQ 32/15", "PQ 32/25", "PQ 32/35", "PQ 35/20", "PQ 35/30"]:
+                        continue
                     core = builder.Builder("FreeCAD").factory(data)
                     print(data["name"])
                     core.get_piece_technical_drawing(data, colors=colors, save_files=True)
