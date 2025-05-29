@@ -30,7 +30,7 @@ class Tests(unittest.TestCase):
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'pqi', 'ut']:
-                    # if data['name'] != "T 22/14/13":
+                    # if data['name'] != "RM 4":
                     # if data['family'] != "c":
                     # if data['family'] != "ur":
                         # continue
@@ -55,7 +55,7 @@ class Tests(unittest.TestCase):
                         continue
                     if data['name'] in ["PQ 32/15", "PQ 32/25", "PQ 32/35", "PQ 35/20", "PQ 35/30"]:
                         continue
-                    core = builder.Builder("FreeCAD").factory(data)
+                    core = builder.Builder("CadQuery").factory(data)
                     print(data["name"])
                     core.get_piece_technical_drawing(data, colors=colors, save_files=True)
                     filename = f"{data['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
@@ -64,7 +64,7 @@ class Tests(unittest.TestCase):
 
     def test_get_families(self):
         
-        families = builder.Builder("FreeCAD").get_families()
+        families = builder.Builder("CadQuery").get_families()
         with open(f'{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson', 'r') as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
@@ -124,7 +124,7 @@ class Tests(unittest.TestCase):
 
                         core['functionalDescription']['gapping'] = gapping
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("FreeCAD").get_core(data['name'], core_datum['geometricalDescription'])
+                    core = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
@@ -180,7 +180,7 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = []
 
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("FreeCAD").get_core(data['name'], core_datum['geometricalDescription'])
+                    core = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
@@ -240,7 +240,7 @@ class Tests(unittest.TestCase):
                     # import pprint
                     # pprint.pprint(core_datum['processedDescription'])
                     # pprint.pprint(core_datum['geometricalDescription'])
-                    core = builder.Builder("FreeCAD").get_core(data['name'], core_datum['geometricalDescription'])
+                    core = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
                     print(core)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
@@ -296,7 +296,7 @@ class Tests(unittest.TestCase):
 
                     print(data["name"])
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("FreeCAD").get_core_gapping_technical_drawing(data['name'], core_datum)
+                    core = builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -352,7 +352,7 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = gapping
 
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("FreeCAD").get_core_gapping_technical_drawing(data['name'], core_datum)
+                    core = builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -409,7 +409,7 @@ class Tests(unittest.TestCase):
                         core['functionalDescription']['gapping'] = []
 
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("FreeCAD").get_core_gapping_technical_drawing(data['name'], core_datum)
+                    core = builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -534,7 +534,7 @@ class Tests(unittest.TestCase):
                                                                       'height': 0.019,
                                                                       'radialHeight': None,
                                                                       'width': 0.0095}]}}
-        core = builder.Builder("FreeCAD").get_core(core['functionalDescription']['shape']['name'], core['geometricalDescription'])
+        core = builder.Builder("CadQuery").get_core(core['functionalDescription']['shape']['name'], core['geometricalDescription'])
 
         # filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
         # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -542,7 +542,7 @@ class Tests(unittest.TestCase):
 
     def test_1(self):
         core_shape = {'family': 'p', 'type': 'standard', 'aliases': [], 'dimensions': {'A': 0.0424, 'B': 0.0147, 'C': 0.0319, 'D': 0.010249999999999999, 'E': 0.0363, 'F': 0.0174, 'G': 0.0051, 'H': 0.006500000000000001, 'M': 0.0, 'N': 0.0, 'r1': 0.0}, 'familySubtype': '2', 'magneticCircuit': 'open', 'name': 'P 42/29'}
-        core_builder = builder.Builder("FreeCAD").factory(core_shape)
+        core_builder = builder.Builder("CadQuery").factory(core_shape)
         colors = {
             "projection_color": "#d4d4d4",
             "dimension_color": "#d4d4d4"
@@ -566,6 +566,48 @@ class Tests(unittest.TestCase):
         # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
         # self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_core_gaps_FrontView.svg"))
 
+    def test_3(self):
+        core_shape = {"magneticCircuit": "open", "type": "standard", "family": "ur", "aliases": [], "name": "UR type 2", "dimensions": {"A": {"nominal": 0.0595}, "D": {"nominal": 0.0215}, "C": {"nominal": 0.0170}, "E": {"minimum": 0.0255}, "H": {"nominal": 0.017}, "B": {"nominal": 0.036}, "G": {"nominal": 0}, "F": {"nominal": 0}, "S": {"nominal": 0.0045}}, "familySubtype": "2"}
+        core_builder = builder.Builder("CadQuery").factory(core_shape)
+        core_builder.get_piece(core_shape, save_files=True, export_files=True)
+        filename = f"{core_shape['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+        self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
+
+    def test_4(self):
+        core_shape = {  # UR 35/27.5/13
+            "name": "core",
+            "family": "ur",
+            "familySubtype": "1",
+            "dimensions": {
+                "A": {
+                    "nominal": 0.0354
+                },
+                "B": {
+                    "nominal": 0.0275
+                },
+                "C": {
+                    "nominal": 0.013
+                },
+                "D": {
+                    "nominal": 0.0175
+                },
+                "E": {
+                    "minimum": 0.012
+                },
+                "H": {
+                    "nominal": 0.01
+                },
+                "S": {
+                    "nominal": 0.0015
+                },
+            },
+        }
+        core_builder = builder.Builder("CadQuery").factory(core_shape)
+        core_builder.get_piece(core_shape, save_files=True, export_files=True)
+        filename = f"{core_shape['name']}_piece".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+        print(filename)
+        self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
+
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
@@ -587,7 +629,7 @@ if __name__ == '__main__':  # pragma: no cover
     #         'magneticCircuit': None,
     #         'name': 'Custom',
     #         'type': 'custom'}
-    # core = builder.Builder("FreeCAD").factory(data)
+    # core = builder.Builder("CadQuery").factory(data)
     # import pprint
     # pprint.pprint(data)
     # print("ea")

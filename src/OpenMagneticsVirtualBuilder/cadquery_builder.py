@@ -253,6 +253,7 @@ class CadQueryBuilder:
 
                 piece_with_extra = self.get_shape_extras(data, piece)
 
+
                 pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
 
                 if export_files:
@@ -1643,6 +1644,7 @@ class CadQueryBuilder:
                     .tag("winding_column")
                     .translate(translate)
                 )
+                winding_column = winding_column.rotate((0, 0, 1), (0, 0, -1), 90)
                 translate = (-(dimensions["A"] - winding_column_width / 2 - dimensions["H"] / 2), 0, dimensions["D"] / 2 + (dimensions["B"] - dimensions["D"]))
                 lateral_column = (
                     cq.Workplane()
@@ -1703,16 +1705,19 @@ class CadQueryBuilder:
                 )
                 piece += winding_column + lateral_column
 
-            if "S" in dimensions:
-                if "F" in dimensions:
+            if "S" in dimensions and dimensions["S"] > 0:
+                if "F" in dimensions and dimensions["F"] > 0:
                     winding_column_width = dimensions["F"]
                 else:
                     winding_column_width = dimensions["C"]
 
-                if "H" in dimensions:
+                if "H" in dimensions and dimensions["H"] > 0:
                     lateral_column_width = dimensions["H"]
                 else:
                     lateral_column_width = dimensions["F"]
+
+                if familySubtype == '1':
+                    lateral_column_width += dimensions["C"] - dimensions["H"]
 
                 translate = (-(dimensions["A"] - lateral_column_width / 2 - dimensions["S"] / 2), 0, dimensions["B"] / 2)
                 lateral_hole_round_left = (

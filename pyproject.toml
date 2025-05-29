@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "OpenMagneticsVirtualBuilder"
-version = "0.6.11"
+version = "0.6.12"
 description = 'This project hold all the Python scripts needed to produce Freecad related files from any magnetic defined following MAL schemas. This files include 2D and 3D models, meshes, and technical drawings.'
 readme = "README.md"
 requires-python = ">=3.8"
