@@ -7,12 +7,161 @@ from abc import ABCMeta, abstractmethod
 import copy
 import pathlib
 import platform
+from enum import Enum
+from dataclasses import dataclass, field
+from typing import Optional, List, Union, Dict, Any
 sys.path.append(os.path.dirname(__file__))
 import utils
 import cadquery as cq
 
 file_dir = os.path.dirname(__file__)
 sys.path.append(file_dir)
+
+
+# ==========================================================================
+# Enums and Data Classes for Magnetic Building
+# ==========================================================================
+
+class WireType(Enum):
+    """Wire types supported."""
+    round = "round"
+    litz = "litz"
+    rectangular = "rectangular"
+    foil = "foil"
+    planar = "planar"
+
+
+class ColumnShape(Enum):
+    """Bobbin column shapes."""
+    round = "round"
+    rectangular = "rectangular"
+
+
+def resolve_dimensional_value(value: Any) -> float:
+    """Extract numeric value from dimensional data (handles dict with 'nominal' or plain value)."""
+    if value is None:
+        return 0.0
+    if isinstance(value, dict):
+        return value.get('nominal', value.get('minimum', value.get('maximum', 0.0)))
+    return float(value)
+
+
+@dataclass
+class WireDescription:
+    """Description of a wire."""
+    wire_type: WireType
+    conducting_diameter: Optional[float] = None
+    outer_diameter: Optional[float] = None
+    conducting_width: Optional[float] = None
+    conducting_height: Optional[float] = None
+    outer_width: Optional[float] = None
+    outer_height: Optional[float] = None
+    number_conductors: int = 1
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'WireDescription':
+        wire_type_str = data.get('type', 'round')
+        wire_type = WireType[wire_type_str] if isinstance(wire_type_str, str) else wire_type_str
+        
+        return cls(
+            wire_type=wire_type,
+            conducting_diameter=resolve_dimensional_value(data.get('conductingDiameter')),
+            outer_diameter=resolve_dimensional_value(data.get('outerDiameter')),
+            conducting_width=resolve_dimensional_value(data.get('conductingWidth')),
+            conducting_height=resolve_dimensional_value(data.get('conductingHeight')),
+            outer_width=resolve_dimensional_value(data.get('outerWidth')),
+            outer_height=resolve_dimensional_value(data.get('outerHeight')),
+            number_conductors=data.get('numberConductors', 1)
+        )
+
+
+@dataclass
+class TurnDescription:
+    """Description of a single turn."""
+    coordinates: List[float]
+    winding: str = ""
+    section: str = ""
+    layer: str = ""
+    parallel: int = 0
+    turn_index: int = 0
+    dimensions: Optional[List[float]] = None
+    rotation: float = 0.0
+    additional_coordinates: Optional[List[List[float]]] = None
+    cross_sectional_shape: str = "round"
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'TurnDescription':
+        return cls(
+            coordinates=data.get('coordinates', [0, 0]),
+            winding=data.get('winding', ''),
+            section=data.get('section', ''),
+            layer=data.get('layer', ''),
+            parallel=data.get('parallel', 0),
+            turn_index=data.get('turnIndex', 0),
+            dimensions=data.get('dimensions'),
+            rotation=data.get('rotation', 0.0),
+            additional_coordinates=data.get('additionalCoordinates'),
+            cross_sectional_shape=data.get('crossSectionalShape', 'round')
+        )
+
+
+@dataclass
+class BobbinProcessedDescription:
+    """Processed bobbin description."""
+    column_depth: float = 0.0
+    column_width: float = 0.0
+    column_thickness: float = 0.0
+    wall_thickness: float = 0.0
+    column_shape: ColumnShape = ColumnShape.rectangular
+    winding_window_height: float = 0.0
+    winding_window_width: float = 0.0
+    winding_window_radial_height: float = 0.0
+    winding_window_angle: Optional[float] = None
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'BobbinProcessedDescription':
+        shape_str = data.get('columnShape', 'rectangular')
+        if isinstance(shape_str, str):
+            column_shape = ColumnShape[shape_str] if shape_str in ColumnShape.__members__ else ColumnShape.rectangular
+        else:
+            column_shape = shape_str
+            
+        # Get winding window info
+        ww_height = 0.0
+        ww_width = 0.0
+        ww_radial_height = 0.0
+        ww_angle = None
+        
+        winding_windows = data.get('windingWindows', [])
+        if winding_windows and len(winding_windows) > 0:
+            ww = winding_windows[0]
+            ww_height = ww.get('height', 0.0)
+            ww_width = ww.get('width', 0.0)
+            ww_radial_height = ww.get('radialHeight', 0.0)
+            ww_angle = ww.get('angle')
+        
+        return cls(
+            column_depth=data.get('columnDepth', 0.0),
+            column_width=data.get('columnWidth', 0.0),
+            column_thickness=data.get('columnThickness', 0.0),
+            wall_thickness=data.get('wallThickness', 0.0),
+            column_shape=column_shape,
+            winding_window_height=ww_height,
+            winding_window_width=ww_width,
+            winding_window_radial_height=ww_radial_height,
+            winding_window_angle=ww_angle
+        )
+
+
+def convert_axis_toroidal(coordinates):
+    """Convert coordinates for toroidal cores (axis along Y)."""
+    if len(coordinates) == 2:
+        # [radial, angle] or [x, z] -> [x, 0, z]
+        return [coordinates[0], 0, coordinates[1]]
+    elif len(coordinates) == 3:
+        return [coordinates[0], coordinates[1], coordinates[2]]
+    else:
+        return [0, 0, 0]
 
 
 def flatten_dimensions(data):
@@ -152,6 +301,292 @@ class CadQueryBuilder:
     
     def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
         raise NotImplementedError
+
+    def get_turn(
+        self,
+        turn_description: TurnDescription,
+        wire_description: WireDescription,
+        bobbin_description: BobbinProcessedDescription,
+    ) -> cq.Workplane:
+        """Create a single turn geometry for a toroidal core."""
+        return self._create_toroidal_turn(turn_description, wire_description, bobbin_description)
+
+    def _create_toroidal_turn(
+        self,
+        turn_description: TurnDescription,
+        wire_description: WireDescription,
+        bobbin_description: BobbinProcessedDescription,
+    ) -> cq.Workplane:
+        """Create a toroidal turn using tubes and torus arcs.
+        
+        Coordinate system for toroidal cores:
+        - Y axis: Core axis (torus revolves around Y)
+        - X axis: Radial direction (negative X is inside the donut hole)
+        - Z axis: Tangential direction (along the circumference at Y=0)
+        
+        The turn consists of:
+        - Inner tube: At inner radius, going through the core hole (along Y)
+        - Top radial segment: Connecting inner to outer on top of the core
+        - Outer tube: At outer radius, going through the outside (along Y) 
+        - Bottom radial segment: Connecting outer to inner below the core
+        
+        Wire coordinates are in XZ plane (at Y=0):
+        - coordinates[0] = X position (radial, negative = inside hole)
+        - coordinates[1] = Z position (tangential)
+        """
+        from OCP.gp import gp_Pnt, gp_Dir, gp_Ax2
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeTorus
+        import cadquery as cq
+        
+        # Scale factor to avoid OpenCascade precision issues
+        SCALE = 1000.0  # Build in mm, scale back to meters at end
+        
+        # Get wire diameter
+        wire_diameter = wire_description.outer_diameter or wire_description.conducting_diameter or 0.001
+        wire_radius = wire_diameter * SCALE / 2.0
+        
+        # Get bobbin dimensions
+        # column_depth is the half-depth of the core (distance from Y=0 to top/bottom)
+        half_depth = bobbin_description.column_depth * SCALE
+        
+        # Bend radius for corners
+        bend_radius = wire_radius
+        
+        # Get the turn's angular position around the toroid (rotation field in degrees)
+        # This tells us where on the toroid's circumference this turn is located
+        turn_angle_deg = turn_description.rotation  # e.g., 0, 90, 180, 270
+        
+        # Get inner wire position from coordinates
+        # Coordinates are in Cartesian [x, z] format in the XZ plane
+        # The radial distance from center is sqrt(x² + z²)
+        coords = turn_description.coordinates
+        if len(coords) >= 2:
+            # Calculate radial distance using Pythagorean theorem
+            inner_radial = math.sqrt(coords[0]**2 + coords[1]**2) * SCALE
+        else:
+            inner_radial = 5.0  # Default fallback
+        
+        # Get outer wire position from additionalCoordinates
+        add_coords = turn_description.additional_coordinates
+        if add_coords and len(add_coords) > 0:
+            ac = add_coords[0]
+            if len(ac) >= 2:
+                # Calculate radial distance using Pythagorean theorem
+                outer_radial = math.sqrt(ac[0]**2 + ac[1]**2) * SCALE
+            else:
+                outer_radial = inner_radial + (bobbin_description.winding_window_radial_height or 0.003) * SCALE
+        else:
+            # Fallback: outer is at inner + winding window height
+            outer_radial = inner_radial + (bobbin_description.winding_window_radial_height or 0.003) * SCALE
+        
+        # The turn is built at the -X position (rotation=180°) then rotated to final position
+        # Inner wire at -inner_radial on X axis, outer wire at -outer_radial on X axis
+        inner_x = -inner_radial
+        outer_x = -outer_radial
+        
+        # Calculate how much to rotate from the default position (180°) to the target position
+        turn_rotation_deg = turn_angle_deg - 180.0
+        
+        # Radial distance between inner and outer wires
+        radial_distance = outer_radial - inner_radial
+        
+        # Build geometry at origin first, then translate to actual position
+        # Reference: inner wire at (0, 0, 0), outer wire at (-radial_distance, 0, 0)
+        
+        # Tube lengths (along Y, going through the core)
+        tube_length = half_depth - bend_radius  # Shortened to make room for corner
+        
+        # Radial segment length (along X, on top/bottom of core)
+        radial_length = radial_distance - 2 * bend_radius
+        
+        # === Build top half of turn (Y > 0) ===
+        # Using workplane at Y=0 facing +Y direction
+        
+        # 1. Inner tube: at X=0, Z=0, from Y=0 to Y=tube_length (going up through the hole)
+        #    Create on XY plane (normal = +Z), rotate to point in +Y
+        inner_tube = cq.Workplane("XY").circle(wire_radius).extrude(tube_length)
+        inner_tube = inner_tube.rotate((0,0,0), (1,0,0), -90)  # Rotate to point in +Y
+        
+        # 2. Inner corner: connects inner tube (at Y=tube_length) to radial segment
+        #    The corner curves from +Y direction to -X direction
+        #    Center is at (-bend_radius, tube_length, 0) - offset from the corner in the -X direction
+        #    Arc goes from +X (relative to center, connects to tube) to +Y (connects to radial)
+        #    With axis +Z and Xref +X, rotating +X by 90° around +Z gives +Y ✓
+        inner_corner_center = gp_Pnt(-bend_radius, tube_length, 0)
+        inner_corner_axis = gp_Ax2(inner_corner_center, gp_Dir(0, 0, 1), gp_Dir(1, 0, 0))
+        inner_corner_torus = BRepPrimAPI_MakeTorus(inner_corner_axis, bend_radius, wire_radius, math.pi / 2).Shape()
+        inner_corner = cq.Workplane("XY").add(cq.Shape(inner_corner_torus))
+        
+        # 3. Radial segment: at Y=half_depth, going from X=-bend_radius to X=-(bend_radius + radial_length)
+        #    This is on top of the core, going radially outward (-X direction)
+        #    Rotate -90 around Y to point in -X direction (positive rotation goes +Z to +X, so -90 goes +Z to -X)
+        radial_tube = cq.Workplane("XY").circle(wire_radius).extrude(radial_length)
+        radial_tube = radial_tube.rotate((0,0,0), (0,1,0), -90)  # Rotate to point in -X
+        radial_tube = radial_tube.translate((-bend_radius, half_depth, 0))
+        
+        # 4. Outer corner: connects radial segment to outer tube
+        #    The corner curves from +Y direction (relative to center) to -X direction
+        #    Center is at (-radial_distance + bend_radius, tube_length, 0)
+        #    With axis +Z and Xref +Y, rotating +Y by 90° around +Z gives -X ✓
+        outer_corner_center = gp_Pnt(-radial_distance + bend_radius, tube_length, 0)
+        outer_corner_axis = gp_Ax2(outer_corner_center, gp_Dir(0, 0, 1), gp_Dir(0, 1, 0))
+        outer_corner_torus = BRepPrimAPI_MakeTorus(outer_corner_axis, bend_radius, wire_radius, math.pi / 2).Shape()
+        outer_corner = cq.Workplane("XY").add(cq.Shape(outer_corner_torus))
+        
+        # 5. Outer tube: at X=-radial_distance, Z=0, from Y=0 to Y=tube_length
+        outer_tube = cq.Workplane("XY").circle(wire_radius).extrude(tube_length)
+        outer_tube = outer_tube.rotate((0,0,0), (1,0,0), -90)  # Rotate to point in +Y
+        outer_tube = outer_tube.translate((-radial_distance, 0, 0))
+        
+        # Combine all parts of top half using compound (more reliable than unions)
+        from OCP.BRep import BRep_Builder
+        from OCP.TopoDS import TopoDS_Compound
+        
+        def combine_shapes(shapes):
+            """Combine multiple shapes into a compound."""
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            for shape in shapes:
+                builder.Add(compound, shape.val().wrapped)
+            return cq.Workplane("XY").add(cq.Shape(compound))
+        
+        # Translate individual pieces to actual position BEFORE combining
+        # The inner wire should be at inner_x on the X axis (inner_x is negative)
+        # No Z translation needed - rotation will handle angular positioning
+        inner_tube = inner_tube.translate((inner_x, 0, 0))
+        inner_corner = inner_corner.translate((inner_x, 0, 0))
+        radial_tube = radial_tube.translate((inner_x, 0, 0))
+        outer_corner = outer_corner.translate((inner_x, 0, 0))
+        outer_tube = outer_tube.translate((inner_x, 0, 0))
+        
+        # Combine all pieces into top half
+        top_half = combine_shapes([inner_tube, inner_corner, radial_tube, outer_corner, outer_tube])
+        
+        # Mirror to create bottom half (mirror across XZ plane at Y=0)
+        bottom_half = top_half.mirror("XZ")
+        
+        # Combine top and bottom halves
+        full_turn = combine_shapes([top_half, bottom_half])
+        
+        # Rotate around Y axis if inner and outer wires are at different angles
+        if abs(turn_rotation_deg) > 0.001:
+            full_turn = full_turn.rotate((0, 0, 0), (0, 1, 0), turn_rotation_deg)
+        
+        # Scale back to meters
+        final_shape = full_turn.val()
+        scaled_shape = final_shape.scale(1 / SCALE)
+        
+        return cq.Workplane("XY").add(scaled_shape)
+
+    def get_magnetic(
+        self,
+        magnetic_data: dict,
+        project_name: str = "Magnetic",
+        output_path: str = None,
+        export_files: bool = True,
+    ):
+        """Build complete magnetic assembly (core + coil).
+        
+        Args:
+            magnetic_data: MAS format magnetic data with 'core' and 'coil' keys
+            project_name: Name for the output files
+            output_path: Directory for output files
+            export_files: Whether to export STEP/STL files
+            
+        Returns:
+            Tuple of (step_path, stl_path) or compound if export_files is False
+        """
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+        
+        os.makedirs(output_path, exist_ok=True)
+        project_name = project_name.replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+        
+        all_pieces = []
+        
+        # Build core
+        core_data = magnetic_data.get('core', {})
+        geometrical_description = core_data.get('geometricalDescription', [])
+        if geometrical_description:
+            for index, geometrical_part in enumerate(geometrical_description):
+                if geometrical_part['type'] in ['half set', 'toroidal']:
+                    shape_data = geometrical_part['shape']
+                    part_builder = CadQueryBuilder().factory(shape_data)
+                    
+                    piece = part_builder.get_piece(
+                        data=copy.deepcopy(shape_data),
+                        name=f"Core_{index}",
+                        save_files=False,
+                        export_files=False
+                    )
+                    
+                    # Apply rotations
+                    piece = piece.rotate((1, 0, 0), (-1, 0, 0), geometrical_part['rotation'][0] / math.pi * 180)
+                    piece = piece.rotate((0, 1, 0), (0, -1, 0), geometrical_part['rotation'][2] / math.pi * 180)
+                    piece = piece.rotate((0, 0, 1), (0, 0, -1), geometrical_part['rotation'][1] / math.pi * 180)
+                    
+                    # Apply translation
+                    piece = piece.translate(convert_axis(geometrical_part['coordinates']))
+                    
+                    all_pieces.append(piece)
+        
+        # Build coil turns
+        coil_data = magnetic_data.get('coil', {})
+        bobbin_data = coil_data.get('bobbin', {})
+        if isinstance(bobbin_data, str):
+            # Bobbin is a reference string, no processed description available
+            bobbin_processed = BobbinProcessedDescription()
+        else:
+            bobbin_processed_data = bobbin_data.get('processedDescription', {})
+            bobbin_processed = BobbinProcessedDescription.from_dict(bobbin_processed_data)
+        
+        # Get wire info from functionalDescription
+        wire_desc = WireDescription(WireType.round)  # default
+        functional_desc = coil_data.get('functionalDescription', [])
+        if functional_desc:
+            wire_data = functional_desc[0].get('wire', {})
+            if wire_data:
+                wire_desc = WireDescription.from_dict(wire_data)
+        
+        # In MAS format, turnsDescription is at coil level, not inside sections/layers
+        turns_data = coil_data.get('turnsDescription', [])
+        for turn_data in turns_data:
+            turn_desc = TurnDescription.from_dict(turn_data)
+            
+            # Get wire dimensions from turn data if available
+            if turn_data.get('dimensions'):
+                dims = turn_data['dimensions']
+                # dimensions is [width, height] or [diameter, diameter] for round wire
+                if len(dims) >= 2:
+                    wire_desc = WireDescription(
+                        wire_type=WireType.round if turn_data.get('crossSectionalShape', 'round') == 'round' else WireType.rectangular,
+                        outer_diameter=dims[0],
+                        conducting_diameter=dims[0]
+                    )
+            
+            turn_geom = self.get_turn(turn_desc, wire_desc, bobbin_processed)
+            all_pieces.append(turn_geom)
+        
+        # Export
+        if export_files and all_pieces:
+            from cadquery import exporters
+            scaled_pieces = []
+            for piece in all_pieces:
+                for o in piece.objects:
+                    scaled_pieces.append(o.scale(1000))
+            
+            compound = cq.Compound.makeCompound(scaled_pieces)
+            
+            step_path = f"{output_path}/{project_name}.step"
+            stl_path = f"{output_path}/{project_name}.stl"
+            exporters.export(compound, step_path, "STEP")
+            exporters.export(compound, stl_path, "STL")
+            return step_path, stl_path
+        elif all_pieces:
+            return all_pieces
+        else:
+            return None, None
 
     class IPiece(metaclass=ABCMeta):
         def __init__(self):
