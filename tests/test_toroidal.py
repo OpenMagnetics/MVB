@@ -126,6 +126,130 @@ class TestToroidalTurns:
         assert validation['is_valid'], \
             f"Expected 1 core + {validation['expected_components']} turn components, got {validation['core_count']} cores + {validation['turn_count']} components"
 
+    def test_toroidal_two_turns_spread(self):
+        """Test creating a toroidal core with two turns spread apart (90° and 270°)."""
+        output_path = os.path.join(os.path.dirname(__file__), '..', 'output')
+        os.makedirs(output_path, exist_ok=True)
+
+        test_data_path = os.path.join(os.path.dirname(__file__), 'testData', 'toroidal_two_turns_spread.json')
+        with open(test_data_path, 'r') as f:
+            mas_data = json.load(f)
+
+        builder = Builder()
+        result = builder.get_magnetic(
+            mas_data,
+            project_name='toroidal_two_turns_spread_test',
+            output_path=output_path,
+            export_files=True
+        )
+
+        assert result is not None, "Result should not be None"
+        step_file, stl_file = result
+        
+        assert os.path.exists(step_file), f"STEP file should exist at {step_file}"
+        assert os.path.exists(stl_file), f"STL file should exist at {stl_file}"
+        print(f"\nExported STEP to: {step_file}")
+
+        # Validate geometry
+        shape = cq.importers.importStep(step_file)
+        solid_info = get_solid_info(shape)
+        
+        print(f"\n=== Geometry Validation ===")
+        print(f"Total solids: {len(solid_info)}")
+        
+        cores = [s for s in solid_info if s['volume'] >= 100]
+        turns = [s for s in solid_info if s['volume'] < 100]
+        print(f"Cores: {len(cores)}, Turn components: {len(turns)}")
+
+        # Should have 1 core + 20 components for 2 turns
+        assert len(cores) == 1, f"Expected 1 core, got {len(cores)}"
+        assert len(turns) == 20, f"Expected 20 turn components for 2 turns, got {len(turns)}"
+
+    def test_toroidal_two_turns_centered(self):
+        """Test creating a toroidal core with two turns centered near 180°."""
+        output_path = os.path.join(os.path.dirname(__file__), '..', 'output')
+        os.makedirs(output_path, exist_ok=True)
+
+        test_data_path = os.path.join(os.path.dirname(__file__), 'testData', 'toroidal_two_turns_centered.json')
+        with open(test_data_path, 'r') as f:
+            mas_data = json.load(f)
+
+        builder = Builder()
+        result = builder.get_magnetic(
+            mas_data,
+            project_name='toroidal_two_turns_centered_test',
+            output_path=output_path,
+            export_files=True
+        )
+
+        assert result is not None, "Result should not be None"
+        step_file, stl_file = result
+        
+        assert os.path.exists(step_file), f"STEP file should exist at {step_file}"
+        assert os.path.exists(stl_file), f"STL file should exist at {stl_file}"
+        print(f"\nExported STEP to: {step_file}")
+
+        # Validate geometry
+        shape = cq.importers.importStep(step_file)
+        solid_info = get_solid_info(shape)
+        
+        print(f"\n=== Geometry Validation ===")
+        print(f"Total solids: {len(solid_info)}")
+        
+        cores = [s for s in solid_info if s['volume'] >= 100]
+        turns = [s for s in solid_info if s['volume'] < 100]
+        print(f"Cores: {len(cores)}, Turn components: {len(turns)}")
+
+        # Should have 1 core + 20 components for 2 turns
+        assert len(cores) == 1, f"Expected 1 core, got {len(cores)}"
+        assert len(turns) == 20, f"Expected 20 turn components for 2 turns, got {len(turns)}"
+
+    def test_toroidal_full_layer(self):
+        """Test creating a toroidal core with a full layer of 35 turns."""
+        output_path = os.path.join(os.path.dirname(__file__), '..', 'output')
+        os.makedirs(output_path, exist_ok=True)
+
+        test_data_path = os.path.join(os.path.dirname(__file__), 'testData', 'toroidal_full_layer.json')
+        with open(test_data_path, 'r') as f:
+            mas_data = json.load(f)
+
+        # Get expected turn count from data
+        expected_turns = len(mas_data['magnetic']['coil'].get('turnsDescription', []))
+        print(f"\nBuilding {expected_turns} turns...")
+
+        builder = Builder()
+        result = builder.get_magnetic(
+            mas_data,
+            project_name='toroidal_full_layer_test',
+            output_path=output_path,
+            export_files=True
+        )
+
+        assert result is not None, "Result should not be None"
+        step_file, stl_file = result
+        
+        assert os.path.exists(step_file), f"STEP file should exist at {step_file}"
+        assert os.path.exists(stl_file), f"STL file should exist at {stl_file}"
+        print(f"Exported STEP to: {step_file}")
+        print(f"STEP file size: {os.path.getsize(step_file)} bytes")
+
+        # Validate geometry
+        shape = cq.importers.importStep(step_file)
+        solid_info = get_solid_info(shape)
+        
+        print(f"\n=== Geometry Validation ===")
+        print(f"Total solids: {len(solid_info)}")
+        
+        cores = [s for s in solid_info if s['volume'] >= 100]  # Lower threshold for smaller core
+        turns = [s for s in solid_info if s['volume'] < 100]
+        print(f"Cores: {len(cores)}, Turn components: {len(turns)}")
+        print(f"Expected turn components: {expected_turns} x 10 = {expected_turns * 10}")
+
+        # Should have 1 core + expected_turns*10 components
+        assert len(cores) == 1, f"Expected 1 core, got {len(cores)}"
+        assert len(turns) == expected_turns * 10, \
+            f"Expected {expected_turns * 10} turn components, got {len(turns)}"
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v', '-s'])
