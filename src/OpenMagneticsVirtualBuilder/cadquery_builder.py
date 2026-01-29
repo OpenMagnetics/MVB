@@ -19,6 +19,51 @@ sys.path.append(file_dir)
 
 
 # ==========================================================================
+# Global Configuration for Tessellation Quality
+# ==========================================================================
+
+# Number of segments per full circle for curved surfaces in STL export
+# Lower values = fewer polygons, faster rendering, smaller files
+# Higher values = smoother curves, more polygons, larger files
+# Default: 20 segments per circle (18° per segment)
+TESSELLATION_SEGMENTS_PER_CIRCLE = 20
+
+# Angular tolerance in degrees for STL tessellation
+# This is derived from TESSELLATION_SEGMENTS_PER_CIRCLE
+def get_angular_tolerance():
+    """Get angular tolerance in radians based on segments per circle."""
+    return 2 * math.pi / TESSELLATION_SEGMENTS_PER_CIRCLE
+
+# Linear tolerance for STL tessellation (chord deviation)
+# Smaller values = more accurate but more polygons
+TESSELLATION_LINEAR_TOLERANCE = 0.1  # mm
+
+
+def set_tessellation_quality(segments_per_circle: int = 20, linear_tolerance: float = 0.1):
+    """Configure the tessellation quality for STL export.
+    
+    Args:
+        segments_per_circle: Number of segments per full circle (default: 20).
+            - 8-12: Very coarse, good for previews
+            - 16-24: Medium quality, good balance
+            - 32-48: High quality, smooth curves
+            - 64+: Very high quality, large files
+        linear_tolerance: Maximum chord deviation in mm (default: 0.1).
+            Smaller values = more accurate but more polygons.
+    
+    Example:
+        # Coarse quality for fast previews
+        set_tessellation_quality(segments_per_circle=12)
+        
+        # High quality for final renders
+        set_tessellation_quality(segments_per_circle=48, linear_tolerance=0.01)
+    """
+    global TESSELLATION_SEGMENTS_PER_CIRCLE, TESSELLATION_LINEAR_TOLERANCE
+    TESSELLATION_SEGMENTS_PER_CIRCLE = segments_per_circle
+    TESSELLATION_LINEAR_TOLERANCE = linear_tolerance
+
+
+# ==========================================================================
 # Enums and Data Classes for Magnetic Building
 # ==========================================================================
 
@@ -291,7 +336,14 @@ class CadQueryBuilder:
                 scaled_pieces_to_export = cq.Compound.makeCompound(scaled_pieces_to_export)
 
                 exporters.export(scaled_pieces_to_export, f"{output_path}/{project_name}.step", "STEP")
-                exporters.export(scaled_pieces_to_export, f"{output_path}/{project_name}.stl", "STL")
+                # Use configurable tessellation parameters for STL
+                exporters.export(
+                    scaled_pieces_to_export, 
+                    f"{output_path}/{project_name}.stl", 
+                    "STL",
+                    tolerance=TESSELLATION_LINEAR_TOLERANCE,
+                    angularTolerance=get_angular_tolerance()
+                )
                 return f"{output_path}/{project_name}.step", f"{output_path}/{project_name}.stl",
             else:
                 return scaled_pieces_to_export
@@ -581,7 +633,14 @@ class CadQueryBuilder:
             step_path = f"{output_path}/{project_name}.step"
             stl_path = f"{output_path}/{project_name}.stl"
             exporters.export(compound, step_path, "STEP")
-            exporters.export(compound, stl_path, "STL")
+            # Use configurable tessellation parameters for STL
+            exporters.export(
+                compound, 
+                stl_path, 
+                "STL",
+                tolerance=TESSELLATION_LINEAR_TOLERANCE,
+                angularTolerance=get_angular_tolerance()
+            )
             return step_path, stl_path
         elif all_pieces:
             return all_pieces
