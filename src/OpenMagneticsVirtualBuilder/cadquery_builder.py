@@ -359,9 +359,323 @@ class CadQueryBuilder:
         turn_description: TurnDescription,
         wire_description: WireDescription,
         bobbin_description: BobbinProcessedDescription,
+        is_toroidal: bool = False,
     ) -> cq.Workplane:
-        """Create a single turn geometry for a toroidal core."""
-        return self._create_toroidal_turn(turn_description, wire_description, bobbin_description)
+        """Create a single turn geometry.
+        
+        Args:
+            turn_description: Turn parameters (coordinates, winding, etc.)
+            wire_description: Wire parameters (type, diameter, etc.)
+            bobbin_description: Bobbin parameters
+            is_toroidal: If True, create toroidal turn; otherwise concentric turn
+            
+        Returns:
+            CadQuery Workplane with the turn geometry
+        """
+        if is_toroidal or bobbin_description.winding_window_angle is not None:
+            return self._create_toroidal_turn(turn_description, wire_description, bobbin_description)
+        else:
+            return self._create_concentric_turn(turn_description, wire_description, bobbin_description)
+
+    def _create_concentric_turn(
+        self,
+        turn_description: TurnDescription,
+        wire_description: WireDescription,
+        bobbin_description: BobbinProcessedDescription,
+    ) -> cq.Workplane:
+        """Create a concentric turn (for E-cores, PQ, RM, etc.).
+        
+        Following Ansyas approach with CadQuery coordinate system:
+        - X axis: depth direction (along column depth, perpendicular to winding window)
+        - Y axis: width direction (radial, distance from center column)
+        - Z axis: height direction (along core axis, vertical)
+        
+        MAS coordinates for turns:
+        - coordinates[0] = radial position (distance from center) -> maps to Y
+        - coordinates[1] = height position (along core axis) -> maps to Z
+        
+        The turn is built as 4 straight tubes + 4 corner quarter-tori.
+        """
+        from OCP.gp import gp_Pnt, gp_Dir, gp_Ax1, gp_Ax2
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeTorus, BRepPrimAPI_MakeRevol
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
+        from OCP.GC import GC_MakeCircle
+        from OCP.BRep import BRep_Builder
+        from OCP.TopoDS import TopoDS_Compound
+        import cadquery as cq
+        
+        # Scale factor
+        SCALE = 1000.0  # Build in mm, scale back to meters at end
+        
+        # Get wire dimensions
+        if wire_description.wire_type == WireType.rectangular:
+            wire_width = (wire_description.outer_width or wire_description.conducting_width or 0.001) * SCALE
+            wire_height = (wire_description.outer_height or wire_description.conducting_height or 0.001) * SCALE
+            wire_radius = min(wire_width, wire_height) / 2.0
+        else:  # round, litz
+            wire_diameter = (wire_description.outer_diameter or wire_description.conducting_diameter or 0.001) * SCALE
+            wire_radius = wire_diameter / 2.0
+        
+        # Get bobbin/column dimensions
+        # In MAS, bobbin columnWidth and columnDepth are HALF dimensions (distance from center to edge)
+        half_col_depth = bobbin_description.column_depth * SCALE  # half column depth
+        half_col_width = bobbin_description.column_width * SCALE  # half column width
+        
+        # Get turn position from coordinates
+        coords = turn_description.coordinates
+        radial_pos = coords[0] * SCALE if len(coords) > 0 else (half_col_width + wire_radius)
+        height_pos = coords[1] * SCALE if len(coords) > 1 else 0
+        
+        # Corner radius: distance from column edge to wire center
+        # Ansyas: turn_turn_radius = turn.coordinates[0] - columnWidth
+        turn_turn_radius = radial_pos - half_col_width
+        if turn_turn_radius < wire_radius:
+            turn_turn_radius = wire_radius
+        
+        if bobbin_description.column_shape == ColumnShape.round:
+            # Round column: simple torus (circular turn)
+            turn_radius = radial_pos  # Distance from center to wire center
+            
+            torus_center = gp_Pnt(0, 0, height_pos)
+            torus_axis = gp_Ax2(torus_center, gp_Dir(0, 0, 1), gp_Dir(1, 0, 0))
+            torus = BRepPrimAPI_MakeTorus(torus_axis, turn_radius, wire_radius).Shape()
+            turn = cq.Workplane("XY").add(cq.Shape(torus))
+            
+        else:
+            # Rectangular column: build using tubes and torus arcs
+            # 
+            # The turn is a rounded rectangle around the column:
+            # - 4 straight tubes (one per side of the column)
+            # - 4 corner quarter-tori connecting the tubes
+            #
+            # Tube positions (wire center):
+            # - +Y side: runs along X from -half_col_depth to +half_col_depth, at Y = radial_pos
+            # - -Y side: runs along X from -half_col_depth to +half_col_depth, at Y = -radial_pos  
+            # - +X side: runs along Y from -half_col_width to +half_col_width, at X = half_col_depth + turn_turn_radius
+            # - -X side: runs along Y from -half_col_width to +half_col_width, at X = -(half_col_depth + turn_turn_radius)
+            
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            
+            # Calculate positions
+            # Wire center on +Y and -Y sides is at radial_pos from center
+            # Wire center on +X and -X sides is at half_col_depth + turn_turn_radius from center
+            wire_y_pos = radial_pos  # = half_col_width + turn_turn_radius
+            wire_x_pos = half_col_depth + turn_turn_radius
+            
+            # Tube lengths
+            tube_x_length = 2 * half_col_depth  # tubes along X span full column depth
+            tube_y_length = 2 * half_col_width  # tubes along Y span full column width
+            
+            # +Y side tube (along X, at Y = wire_y_pos)
+            tube_py = (
+                cq.Workplane("YZ")
+                .center(wire_y_pos, height_pos)
+                .circle(wire_radius)
+                .extrude(tube_x_length)
+                .translate((-half_col_depth, 0, 0))
+            )
+            builder.Add(compound, tube_py.val().wrapped)
+            
+            # -Y side tube (along X, at Y = -wire_y_pos)
+            tube_ny = (
+                cq.Workplane("YZ")
+                .center(-wire_y_pos, height_pos)
+                .circle(wire_radius)
+                .extrude(tube_x_length)
+                .translate((-half_col_depth, 0, 0))
+            )
+            builder.Add(compound, tube_ny.val().wrapped)
+            
+            # +X side tube (along Y, at X = wire_x_pos)
+            # XZ plane extrudes in -Y by default, so use positive to go -Y then translate up
+            tube_px = (
+                cq.Workplane("XZ")
+                .center(wire_x_pos, height_pos)
+                .circle(wire_radius)
+                .extrude(tube_y_length)  # Goes from Y=0 to Y=-tube_y_length
+                .translate((0, half_col_width, 0))  # Shift up to center at Y=0
+            )
+            builder.Add(compound, tube_px.val().wrapped)
+            
+            # -X side tube (along Y, at X = -wire_x_pos)
+            tube_nx = (
+                cq.Workplane("XZ")
+                .center(-wire_x_pos, height_pos)
+                .circle(wire_radius)
+                .extrude(tube_y_length)  # Goes from Y=0 to Y=-tube_y_length
+                .translate((0, half_col_width, 0))  # Shift up to center at Y=0
+            )
+            builder.Add(compound, tube_nx.val().wrapped)
+            
+            # Four corner arcs (quarter tori created by revolving a circle 90°)
+            # Corners are at (±half_col_depth, ±half_col_width, height_pos)
+            # Each corner has a quarter-torus connecting two adjacent tubes
+            #
+            # For each corner:
+            # 1. Create a circle (wire cross-section) at turn_turn_radius from corner
+            # 2. Revolve 90° around Z axis at corner center
+            
+            def create_quarter_torus(corner_x, corner_y, corner_z, start_angle_deg):
+                """Create a quarter torus at the given corner.
+                
+                start_angle_deg: angle from +X axis where the circle starts
+                The circle will revolve 90° counterclockwise (when viewed from +Z)
+                """
+                # Circle center position (turn_turn_radius from corner, at start angle)
+                angle_rad = math.radians(start_angle_deg)
+                circle_x = corner_x + turn_turn_radius * math.cos(angle_rad)
+                circle_y = corner_y + turn_turn_radius * math.sin(angle_rad)
+                
+                # Circle normal points tangent to the arc (perpendicular to radial direction)
+                # For counterclockwise rotation, tangent is 90° ahead
+                tangent_angle = angle_rad + math.pi / 2
+                circle_normal = gp_Dir(math.cos(tangent_angle), math.sin(tangent_angle), 0)
+                
+                circle_center = gp_Pnt(circle_x, circle_y, corner_z)
+                circle_axis = gp_Ax2(circle_center, circle_normal)
+                
+                circle = GC_MakeCircle(circle_axis, wire_radius).Value()
+                circle_edge = BRepBuilderAPI_MakeEdge(circle).Edge()
+                circle_wire = BRepBuilderAPI_MakeWire(circle_edge).Wire()
+                circle_face = BRepBuilderAPI_MakeFace(circle_wire).Face()
+                
+                # Revolve around Z axis at corner
+                revolve_axis = gp_Ax1(gp_Pnt(corner_x, corner_y, corner_z), gp_Dir(0, 0, 1))
+                quarter = BRepPrimAPI_MakeRevol(circle_face, revolve_axis, math.pi / 2).Shape()
+                
+                return quarter
+            
+            # +X +Y corner: circle starts at +X direction (0°), sweeps to +Y
+            corner_shape = create_quarter_torus(+half_col_depth, +half_col_width, height_pos, 0)
+            builder.Add(compound, corner_shape)
+            
+            # -X +Y corner: circle starts at +Y direction (90°), sweeps to -X
+            corner_shape = create_quarter_torus(-half_col_depth, +half_col_width, height_pos, 90)
+            builder.Add(compound, corner_shape)
+            
+            # -X -Y corner: circle starts at -X direction (180°), sweeps to -Y
+            corner_shape = create_quarter_torus(-half_col_depth, -half_col_width, height_pos, 180)
+            builder.Add(compound, corner_shape)
+            
+            # +X -Y corner: circle starts at -Y direction (270°), sweeps to +X
+            corner_shape = create_quarter_torus(+half_col_depth, -half_col_width, height_pos, 270)
+            builder.Add(compound, corner_shape)
+            
+            turn = cq.Workplane("XY").add(cq.Shape(compound))
+        
+        # Scale back to meters
+        final_shape = turn.val()
+        scaled_shape = final_shape.scale(1 / SCALE)
+        
+        return cq.Workplane("XY").add(scaled_shape)
+
+    def get_bobbin(
+        self,
+        bobbin_description: BobbinProcessedDescription,
+    ) -> Optional[cq.Workplane]:
+        """Create bobbin geometry for concentric (E-core, PQ, etc.) magnetics.
+        
+        The bobbin is a tube that wraps around the central column with walls on top/bottom.
+        It's created by subtracting:
+        - The winding window cavity from the outer shell
+        - A central hole through the column
+        
+        Args:
+            bobbin_description: Processed bobbin parameters
+            
+        Returns:
+            CadQuery Workplane with bobbin geometry, or None if bobbin has zero thickness
+        """
+        # Check if bobbin has actual thickness
+        if (round(bobbin_description.wall_thickness, 12) == 0 or 
+            round(bobbin_description.column_thickness, 12) == 0):
+            return None
+        
+        SCALE = 1000.0  # Build in mm, scale back to meters at end
+        
+        # Scale to mm for construction
+        col_depth = bobbin_description.column_depth * SCALE
+        col_width = bobbin_description.column_width * SCALE
+        col_thickness = bobbin_description.column_thickness * SCALE
+        wall_thickness = bobbin_description.wall_thickness * SCALE
+        ww_height = bobbin_description.winding_window_height * SCALE
+        ww_width = bobbin_description.winding_window_width * SCALE
+        
+        # Total bobbin dimensions
+        total_height = ww_height + wall_thickness * 2
+        total_width = ww_width + col_width
+        total_depth = ww_width + col_depth
+        
+        if bobbin_description.column_shape == ColumnShape.round:
+            # Round column bobbin (cylindrical)
+            bobbin = (
+                cq.Workplane("XY")
+                .cylinder(total_height, total_width)
+            )
+            
+            # Negative winding window (hollow ring)
+            neg_ww = (
+                cq.Workplane("XY")
+                .cylinder(ww_height, total_width)
+            )
+            
+            # Central column solid (will be subtracted from negative_ww)
+            central_col = (
+                cq.Workplane("XY")
+                .cylinder(ww_height, col_width)
+            )
+            
+            # Central hole (through entire height)
+            central_hole = (
+                cq.Workplane("XY")
+                .cylinder(total_height, col_width - col_thickness)
+            )
+            
+            # Subtract operations
+            neg_ww_cut = neg_ww.cut(central_col)
+            bobbin = bobbin.cut(neg_ww_cut)
+            bobbin = bobbin.cut(central_hole)
+            
+        else:
+            # Rectangular column bobbin (box-shaped)
+            # Create outer shell centered at origin
+            bobbin = (
+                cq.Workplane("XY")
+                .box(total_depth * 2, total_width * 2, total_height)
+            )
+            
+            # Negative winding window (hollow region where turns go)
+            neg_ww = (
+                cq.Workplane("XY")
+                .box(total_depth * 2, total_width * 2, ww_height)
+            )
+            
+            # Central column solid (keeps material around column)
+            central_col = (
+                cq.Workplane("XY")
+                .box(col_depth * 2, col_width * 2, ww_height)
+            )
+            
+            # Central hole (through entire height for the core column)
+            inner_depth = col_depth - col_thickness
+            inner_width = col_width - col_thickness
+            central_hole = (
+                cq.Workplane("XY")
+                .box(inner_depth * 2, inner_width * 2, total_height)
+            )
+            
+            # Subtract operations (same as Ansyas logic)
+            neg_ww_cut = neg_ww.cut(central_col)
+            bobbin = bobbin.cut(neg_ww_cut)
+            bobbin = bobbin.cut(central_hole)
+        
+        # Scale back to meters
+        final_shape = bobbin.val()
+        scaled_shape = final_shape.scale(1 / SCALE)
+        
+        return cq.Workplane("XY").add(scaled_shape)
 
     def _create_toroidal_turn(
         self,
@@ -381,6 +695,9 @@ class CadQueryBuilder:
         - Top radial segment: Connecting inner to outer on top of the core
         - Outer tube: At outer radius, going through the outside (along Y) 
         - Bottom radial segment: Connecting outer to inner below the core
+        
+        For multilayer turns, the outer wire may be at a different angular position
+        than the inner wire. The radial segment will be angled to connect them.
         
         Wire coordinates are in XZ plane (at Y=0):
         - coordinates[0] = X position (radial, negative = inside hole)
@@ -415,8 +732,11 @@ class CadQueryBuilder:
         if len(coords) >= 2:
             # Calculate radial distance using Pythagorean theorem
             inner_radial = math.sqrt(coords[0]**2 + coords[1]**2) * SCALE
+            # Calculate angular position of inner wire
+            inner_angle_deg = 180.0 / math.pi * math.atan2(coords[1], coords[0])
         else:
             inner_radial = 5.0  # Default fallback
+            inner_angle_deg = turn_angle_deg
         
         # Get outer wire position from additionalCoordinates
         add_coords = turn_description.additional_coordinates
@@ -425,11 +745,20 @@ class CadQueryBuilder:
             if len(ac) >= 2:
                 # Calculate radial distance using Pythagorean theorem
                 outer_radial = math.sqrt(ac[0]**2 + ac[1]**2) * SCALE
+                # Calculate angular position of outer wire
+                outer_angle_deg = 180.0 / math.pi * math.atan2(ac[1], ac[0])
             else:
                 outer_radial = inner_radial + (bobbin_description.winding_window_radial_height or 0.003) * SCALE
+                outer_angle_deg = inner_angle_deg
         else:
-            # Fallback: outer is at inner + winding window height
+            # Fallback: outer is at inner + winding window height, same angle
             outer_radial = inner_radial + (bobbin_description.winding_window_radial_height or 0.003) * SCALE
+            outer_angle_deg = inner_angle_deg
+        
+        # Calculate the angle difference between inner and outer wires (for multilayer)
+        # This is the "tilt" of the radial segment around the Y axis
+        angle_diff_deg = outer_angle_deg - inner_angle_deg
+        angle_diff_rad = math.radians(angle_diff_deg)
         
         # The turn is built at the -X position (rotation=180°) then rotated to final position
         # Inner wire at -inner_radial on X axis, outer wire at -outer_radial on X axis
@@ -445,10 +774,31 @@ class CadQueryBuilder:
         # Build geometry at origin first, then translate to actual position
         # Reference: inner wire at (0, 0, 0), outer wire at (-radial_distance, 0, 0)
         
-        # Tube lengths (along Y, going through the core)
-        tube_length = half_depth - bend_radius  # Shortened to make room for corner
+        # Clearance between wire and core surface
+        # For multilayer: inner layers need more clearance so outer layers can pass underneath
+        # The radial segment height is based on the radial distance being spanned
+        # This ensures turns with larger spans (inner layers) have higher radial segments
+        base_clearance = wire_radius
         
-        # Radial segment length (along X, on top/bottom of core)
+        # Add extra height based on radial_distance - inner layers span more distance
+        # so their top/bottom segments need to be higher to clear outer layer segments
+        core_internal_radius = bobbin_description.winding_window_radial_height * SCALE
+        layer_clearance = core_internal_radius - inner_radial
+
+        # The radial segment (top/bottom) should be at half_depth + total clearance
+        radial_height = half_depth + base_clearance + layer_clearance
+        
+        # Tube lengths (along Y, going through the core)
+        # Tubes go from Y=0 to Y=(radial_height - bend_radius) to leave room for corner
+        tube_length = radial_height - bend_radius
+        
+        # For the radial segment, we need to account for the angle difference
+        # The segment goes from inner corner end to outer corner start
+        # With angle difference, outer parts are rotated around Y axis
+        
+        # Radial segment length (straight line distance between corners)
+        # Inner corner end: (-bend_radius, half_depth, 0) 
+        # Outer corner start needs to connect to outer tube which is at angle_diff offset
         radial_length = radial_distance - 2 * bend_radius
         
         # === Build top half of turn (Y > 0) ===
@@ -469,17 +819,24 @@ class CadQueryBuilder:
         inner_corner_torus = BRepPrimAPI_MakeTorus(inner_corner_axis, bend_radius, wire_radius, math.pi / 2).Shape()
         inner_corner = cq.Workplane("XY").add(cq.Shape(inner_corner_torus))
         
-        # 3. Radial segment: at Y=half_depth, going from X=-bend_radius to X=-(bend_radius + radial_length)
-        #    This is on top of the core, going radially outward (-X direction)
-        #    Rotate -90 around Y to point in -X direction (positive rotation goes +Z to +X, so -90 goes +Z to -X)
+        # 3. Radial segment: at Y=radial_height, from inner corner to outer corner
+        #    For multilayer, this needs to be tilted to connect to the outer wire at angle_diff
+        #    The radial segment goes from (-bend_radius, radial_height, 0) toward outer position
         radial_tube = cq.Workplane("XY").circle(wire_radius).extrude(radial_length)
         radial_tube = radial_tube.rotate((0,0,0), (0,1,0), -90)  # Rotate to point in -X
-        radial_tube = radial_tube.translate((-bend_radius, half_depth, 0))
+        
+        # Apply tilt for angle difference - rotate around Y at the inner corner position
+        if abs(angle_diff_deg) > 0.001:
+            # The radial tube needs to be tilted by angle_diff around Y axis
+            # But the rotation point should be at the inner end of the radial
+            radial_tube = radial_tube.rotate((0, 0, 0), (0, 1, 0), angle_diff_deg)
+        
+        radial_tube = radial_tube.translate((-bend_radius, radial_height, 0))
         
         # 4. Outer corner: connects radial segment to outer tube
         #    The corner curves from +Y direction (relative to center) to -X direction
         #    Center is at (-radial_distance + bend_radius, tube_length, 0)
-        #    With axis +Z and Xref +Y, rotating +Y by 90° around +Z gives -X ✓
+        #    For multilayer, this corner and outer tube are rotated by angle_diff around Y
         outer_corner_center = gp_Pnt(-radial_distance + bend_radius, tube_length, 0)
         outer_corner_axis = gp_Ax2(outer_corner_center, gp_Dir(0, 0, 1), gp_Dir(0, 1, 0))
         outer_corner_torus = BRepPrimAPI_MakeTorus(outer_corner_axis, bend_radius, wire_radius, math.pi / 2).Shape()
@@ -489,6 +846,12 @@ class CadQueryBuilder:
         outer_tube = cq.Workplane("XY").circle(wire_radius).extrude(tube_length)
         outer_tube = outer_tube.rotate((0,0,0), (1,0,0), -90)  # Rotate to point in +Y
         outer_tube = outer_tube.translate((-radial_distance, 0, 0))
+        
+        # Apply angle offset to outer parts for multilayer
+        if abs(angle_diff_deg) > 0.001:
+            # Rotate outer corner and outer tube around Y axis at origin
+            outer_corner = outer_corner.rotate((0, 0, 0), (0, 1, 0), angle_diff_deg)
+            outer_tube = outer_tube.rotate((0, 0, 0), (0, 1, 0), angle_diff_deg)
         
         # Combine all parts of top half using compound (more reliable than unions)
         from OCP.BRep import BRep_Builder
@@ -557,13 +920,21 @@ class CadQueryBuilder:
         
         all_pieces = []
         
+        # Detect if this is a toroidal core
+        is_toroidal = False
+        
         # Build core
         core_data = magnetic_data.get('core', {})
         geometrical_description = core_data.get('geometricalDescription', [])
         if geometrical_description:
             for index, geometrical_part in enumerate(geometrical_description):
+                if geometrical_part['type'] == 'toroidal':
+                    is_toroidal = True
                 if geometrical_part['type'] in ['half set', 'toroidal']:
                     shape_data = geometrical_part['shape']
+                    # Check if shape family is 't' (toroidal)
+                    if shape_data.get('family', '').lower() == 't':
+                        is_toroidal = True
                     part_builder = CadQueryBuilder().factory(shape_data)
                     
                     piece = part_builder.get_piece(
@@ -593,6 +964,12 @@ class CadQueryBuilder:
             bobbin_processed_data = bobbin_data.get('processedDescription', {})
             bobbin_processed = BobbinProcessedDescription.from_dict(bobbin_processed_data)
         
+        # Build bobbin geometry if not toroidal and bobbin has thickness
+        if not is_toroidal:
+            bobbin_geom = self.get_bobbin(bobbin_processed)
+            if bobbin_geom is not None:
+                all_pieces.append(bobbin_geom)
+        
         # Get wire info from functionalDescription
         wire_desc = WireDescription(WireType.round)  # default
         functional_desc = coil_data.get('functionalDescription', [])
@@ -617,7 +994,7 @@ class CadQueryBuilder:
                         conducting_diameter=dims[0]
                     )
             
-            turn_geom = self.get_turn(turn_desc, wire_desc, bobbin_processed)
+            turn_geom = self.get_turn(turn_desc, wire_desc, bobbin_processed, is_toroidal=is_toroidal)
             all_pieces.append(turn_geom)
         
         # Export
