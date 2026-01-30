@@ -198,17 +198,6 @@ class BobbinProcessedDescription:
         )
 
 
-def convert_axis_toroidal(coordinates):
-    """Convert coordinates for toroidal cores (axis along Y)."""
-    if len(coordinates) == 2:
-        # [radial, angle] or [x, z] -> [x, 0, z]
-        return [coordinates[0], 0, coordinates[1]]
-    elif len(coordinates) == 3:
-        return [coordinates[0], coordinates[1], coordinates[2]]
-    else:
-        return [0, 0, 0]
-
-
 def flatten_dimensions(data):
     dimensions = data["dimensions"]
     for k, v in dimensions.items():
@@ -235,10 +224,36 @@ def convert_axis(coordinates):
 
 
 class CadQueryBuilder:
+    """Builder for 3D magnetic component geometry using CadQuery.
+    
+    This class creates 3D geometry for magnetic components including:
+    - Core shapes (E, ETD, PQ, RM, toroidal, etc.)
+    - Coil turns (concentric and toroidal winding styles)
+    - Bobbins
+    
+    Coordinate System (MAS to CadQuery mapping):
+    - For concentric cores (E, PQ, RM, etc.):
+        - X axis: Core depth direction (perpendicular to winding window)
+        - Y axis: Core width direction (radial, distance from central column)
+        - Z axis: Core height direction (along core axis, vertical)
+        - MAS coordinates[0] (radial) -> Y position
+        - MAS coordinates[1] (height) -> Z position
+    
+    - For toroidal cores:
+        - Y axis: Core axis (toroid revolves around Y)
+        - X axis: Radial direction (negative X = inside the donut hole)
+        - Z axis: Tangential direction (along circumference at Y=0)
+        - MAS coordinates[0] (radial) -> distance from Y axis
+        - MAS coordinates[1] (angular) -> rotation angle around Y axis
+    
+    Units:
+    - All MAS input values are in meters
+    - Internal geometry is built in millimeters for precision
+    - Output is scaled back to meters before export
     """
-    Class for calculating the different areas and length of every shape according to EN 60205.
-    Each shape will create a daughter of this class and define their own equations
-    """
+    
+    # Scale factor: build geometry in mm, scale back to meters for output
+    SCALE = 1000.0
 
     def __init__(self):
         self.shapers = {
@@ -404,17 +419,24 @@ class CadQueryBuilder:
         from OCP.TopoDS import TopoDS_Compound
         import cadquery as cq
         
-        # Scale factor
-        SCALE = 1000.0  # Build in mm, scale back to meters at end
+        SCALE = self.SCALE
         
         # Get wire dimensions
-        if wire_description.wire_type == WireType.rectangular:
-            wire_width = (wire_description.outer_width or wire_description.conducting_width or 0.001) * SCALE
-            wire_height = (wire_description.outer_height or wire_description.conducting_height or 0.001) * SCALE
-            wire_radius = min(wire_width, wire_height) / 2.0
+        is_rectangular_wire = wire_description.wire_type == WireType.rectangular
+        if is_rectangular_wire:
+            # Try turn dimensions first, then fall back to wire description
+            if turn_description.dimensions and len(turn_description.dimensions) >= 2:
+                wire_width = turn_description.dimensions[0] * SCALE
+                wire_height = turn_description.dimensions[1] * SCALE
+            else:
+                wire_width = (wire_description.outer_width or wire_description.conducting_width or 0.001) * SCALE
+                wire_height = (wire_description.outer_height or wire_description.conducting_height or 0.001) * SCALE
+            wire_radius = min(wire_width, wire_height) / 2.0  # used for corner sizing
         else:  # round, litz
             wire_diameter = (wire_description.outer_diameter or wire_description.conducting_diameter or 0.001) * SCALE
             wire_radius = wire_diameter / 2.0
+            wire_width = wire_diameter  # for consistent API
+            wire_height = wire_diameter
         
         # Get bobbin/column dimensions
         # In MAS, bobbin columnWidth and columnDepth are HALF dimensions (distance from center to edge)
@@ -433,13 +455,43 @@ class CadQueryBuilder:
             turn_turn_radius = wire_radius
         
         if bobbin_description.column_shape == ColumnShape.round:
-            # Round column: simple torus (circular turn)
+            # Round column: circular turn path
             turn_radius = radial_pos  # Distance from center to wire center
             
-            torus_center = gp_Pnt(0, 0, height_pos)
-            torus_axis = gp_Ax2(torus_center, gp_Dir(0, 0, 1), gp_Dir(1, 0, 0))
-            torus = BRepPrimAPI_MakeTorus(torus_axis, turn_radius, wire_radius).Shape()
-            turn = cq.Workplane("XY").add(cq.Shape(torus))
+            if is_rectangular_wire:
+                # For rectangular wire: sweep a rectangular cross-section around the circular path
+                # Create rectangular cross-section at the wire center position, then sweep
+                from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipe
+                from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
+                from OCP.GC import GC_MakeCircle
+                
+                # Create the circular spine (path around the column)
+                spine_center = gp_Pnt(0, 0, height_pos)
+                spine_axis = gp_Ax2(spine_center, gp_Dir(0, 0, 1), gp_Dir(1, 0, 0))
+                spine_circle = GC_MakeCircle(spine_axis, turn_radius).Value()
+                spine_edge = BRepBuilderAPI_MakeEdge(spine_circle).Edge()
+                spine_wire = BRepBuilderAPI_MakeWire(spine_edge).Wire()
+                
+                # Create rectangular cross-section profile at the start of the path
+                # Profile is in the YZ plane (perpendicular to X, the initial tangent direction)
+                # Centered at (turn_radius, 0, height_pos)
+                profile = (
+                    cq.Workplane("YZ")
+                    .center(turn_radius, height_pos)
+                    .rect(wire_width, wire_height)
+                    .wires().val()
+                )
+                profile_face = BRepBuilderAPI_MakeFace(profile.wrapped).Face()
+                
+                # Sweep the rectangle along the spine
+                pipe = BRepOffsetAPI_MakePipe(spine_wire, profile_face).Shape()
+                turn = cq.Workplane("XY").add(cq.Shape(pipe))
+            else:
+                # For round wire: use torus
+                torus_center = gp_Pnt(0, 0, height_pos)
+                torus_axis = gp_Ax2(torus_center, gp_Dir(0, 0, 1), gp_Dir(1, 0, 0))
+                torus = BRepPrimAPI_MakeTorus(torus_axis, turn_radius, wire_radius).Shape()
+                turn = cq.Workplane("XY").add(cq.Shape(torus))
             
         else:
             # Rectangular column: build using tubes and torus arcs
@@ -593,7 +645,7 @@ class CadQueryBuilder:
             round(bobbin_description.column_thickness, 12) == 0):
             return None
         
-        SCALE = 1000.0  # Build in mm, scale back to meters at end
+        SCALE = self.SCALE
         
         # Scale to mm for construction
         col_depth = bobbin_description.column_depth * SCALE
@@ -703,23 +755,42 @@ class CadQueryBuilder:
         - coordinates[0] = X position (radial, negative = inside hole)
         - coordinates[1] = Z position (tangential)
         """
-        from OCP.gp import gp_Pnt, gp_Dir, gp_Ax2
+        from OCP.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Circ
         from OCP.BRepPrimAPI import BRepPrimAPI_MakeTorus
+        from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipe
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
+        from OCP.GC import GC_MakeCircle, GC_MakeArcOfCircle
         import cadquery as cq
         
-        # Scale factor to avoid OpenCascade precision issues
-        SCALE = 1000.0  # Build in mm, scale back to meters at end
+        SCALE = self.SCALE
         
-        # Get wire diameter
-        wire_diameter = wire_description.outer_diameter or wire_description.conducting_diameter or 0.001
-        wire_radius = wire_diameter * SCALE / 2.0
+        # Determine wire type and dimensions
+        is_rectangular_wire = wire_description.wire_type == WireType.rectangular
+        if is_rectangular_wire:
+            # Try turn dimensions first, then fall back to wire description
+            if turn_description.dimensions and len(turn_description.dimensions) >= 2:
+                wire_width = turn_description.dimensions[0] * SCALE
+                wire_height = turn_description.dimensions[1] * SCALE
+            else:
+                wire_width = (wire_description.outer_width or wire_description.conducting_width or 0.001) * SCALE
+                wire_height = (wire_description.outer_height or wire_description.conducting_height or 0.001) * SCALE
+            wire_radius = min(wire_width, wire_height) / 2.0  # for corner sizing
+        else:
+            wire_diameter = (wire_description.outer_diameter or wire_description.conducting_diameter or 0.001) * SCALE
+            wire_radius = wire_diameter / 2.0
+            wire_width = wire_diameter
+            wire_height = wire_diameter
         
         # Get bobbin dimensions
         # column_depth is the half-depth of the core (distance from Y=0 to top/bottom)
         half_depth = bobbin_description.column_depth * SCALE
         
         # Bend radius for corners
-        bend_radius = wire_radius
+        # For rectangular wire, use half of the larger dimension so corners properly connect
+        if is_rectangular_wire:
+            bend_radius = max(wire_width, wire_height) / 2.0
+        else:
+            bend_radius = wire_radius
         
         # Get the turn's angular position around the toroid (rotation field in degrees)
         # This tells us where on the toroid's circumference this turn is located
@@ -804,9 +875,142 @@ class CadQueryBuilder:
         # === Build top half of turn (Y > 0) ===
         # Using workplane at Y=0 facing +Y direction
         
+        # Helper function to create a tube (extruded cross-section)
+        def create_tube(length, plane="XY", swap_dims=False):
+            """Create a tube with circular or rectangular cross-section.
+            
+            For rectangular wire, dimensions are:
+            - wire_width: tangential dimension (along toroid circumference)
+            - wire_height: radial dimension (toward/away from core axis Y)
+            
+            After rotation:
+            - Inner/outer tubes: point in +Y, cross-section in XZ plane
+              -> width in X (tangential), height in Z (radial, but Z is up)
+            - Radial tubes: point in -X, cross-section in YZ plane
+              -> need to swap: width in Z (tangential), height in Y (radial)
+            """
+            wp = cq.Workplane(plane)
+            if is_rectangular_wire:
+                if swap_dims:
+                    # For radial tube: height goes in Y (radial), width in Z (tangential)
+                    return wp.rect(wire_height, wire_width).extrude(length)
+                else:
+                    return wp.rect(wire_width, wire_height).extrude(length)
+            else:
+                return wp.circle(wire_radius).extrude(length)
+        
+        # Helper function to create a corner (swept cross-section around arc)
+        def create_corner(center_pt, axis_dir, x_ref_dir, angle_rad=math.pi/2):
+            """Create a corner with circular or rectangular cross-section.
+            
+            For round wire: use torus
+            For rectangular wire: sweep rectangle along arc path
+            """
+            if is_rectangular_wire:
+                # Create arc path for the corner
+                # The arc is centered at center_pt, in the plane normal to axis_dir
+                arc_center = center_pt
+                
+                # Calculate start and end points of the arc
+                # Start point is at x_ref_dir * bend_radius from center
+                start_x = arc_center.X() + x_ref_dir.X() * bend_radius
+                start_y = arc_center.Y() + x_ref_dir.Y() * bend_radius
+                start_z = arc_center.Z() + x_ref_dir.Z() * bend_radius
+                start_pt = gp_Pnt(start_x, start_y, start_z)
+                
+                # End point is x_ref rotated by angle_rad around axis
+                cos_a = math.cos(angle_rad)
+                sin_a = math.sin(angle_rad)
+                ax = axis_dir.X()
+                ay = axis_dir.Y()
+                az = axis_dir.Z()
+                rx = x_ref_dir.X()
+                ry = x_ref_dir.Y()
+                rz = x_ref_dir.Z()
+                
+                # Rodrigues rotation formula
+                dot = ax*rx + ay*ry + az*rz
+                cross_x = ay*rz - az*ry
+                cross_y = az*rx - ax*rz
+                cross_z = ax*ry - ay*rx
+                
+                end_ref_x = rx*cos_a + cross_x*sin_a + ax*dot*(1-cos_a)
+                end_ref_y = ry*cos_a + cross_y*sin_a + ay*dot*(1-cos_a)
+                end_ref_z = rz*cos_a + cross_z*sin_a + az*dot*(1-cos_a)
+                
+                end_x = arc_center.X() + end_ref_x * bend_radius
+                end_y = arc_center.Y() + end_ref_y * bend_radius
+                end_z = arc_center.Z() + end_ref_z * bend_radius
+                end_pt = gp_Pnt(end_x, end_y, end_z)
+                
+                # Create the arc using gp_Circ
+                arc_axis = gp_Ax2(arc_center, axis_dir, x_ref_dir)
+                arc_circle = gp_Circ(arc_axis, bend_radius)
+                arc = GC_MakeArcOfCircle(arc_circle, 0, angle_rad, True).Value()
+                arc_edge = BRepBuilderAPI_MakeEdge(arc).Edge()
+                arc_wire = BRepBuilderAPI_MakeWire(arc_edge).Wire()
+                
+                # Create rectangular profile at start point
+                # Profile plane is perpendicular to the arc tangent at start
+                # Tangent at start is perpendicular to x_ref in the arc plane (cross product of axis and x_ref)
+                tangent_x = ay*rz - az*ry  # axis × x_ref
+                tangent_y = az*rx - ax*rz
+                tangent_z = ax*ry - ay*rx
+                tangent_dir = gp_Dir(tangent_x, tangent_y, tangent_z)
+                
+                profile_axis = gp_Ax2(start_pt, tangent_dir)
+                
+                # Create rectangle centered at start_pt
+                # Use OCP to create the rectangle
+                from OCP.BRepBuilderAPI import BRepBuilderAPI_MakePolygon
+                hw = wire_width / 2
+                hh = wire_height / 2
+                
+                # Rectangle vertices in local coordinates (perpendicular to tangent)
+                # Local X = axis_dir, Local Y = x_ref_dir (approximately, for the profile orientation)
+                # Actually we need vectors perpendicular to tangent
+                # Use axis_dir and (tangent × axis) for the profile plane
+                profile_x = gp_Dir(ax, ay, az)  # Use axis direction
+                profile_y_x = tangent_y*az - tangent_z*ay
+                profile_y_y = tangent_z*ax - tangent_x*az
+                profile_y_z = tangent_x*ay - tangent_y*ax
+                profile_y_len = math.sqrt(profile_y_x**2 + profile_y_y**2 + profile_y_z**2)
+                if profile_y_len > 1e-10:
+                    profile_y_x /= profile_y_len
+                    profile_y_y /= profile_y_len
+                    profile_y_z /= profile_y_len
+                else:
+                    profile_y_x, profile_y_y, profile_y_z = rx, ry, rz
+                
+                # Four corners of rectangle
+                def offset_point(base, dx_local, dy_local):
+                    return gp_Pnt(
+                        base.X() + dx_local * profile_x.X() + dy_local * profile_y_x,
+                        base.Y() + dx_local * profile_x.Y() + dy_local * profile_y_y,
+                        base.Z() + dx_local * profile_x.Z() + dy_local * profile_y_z
+                    )
+                
+                p1 = offset_point(start_pt, -hh, -hw)
+                p2 = offset_point(start_pt, -hh, +hw)
+                p3 = offset_point(start_pt, +hh, +hw)
+                p4 = offset_point(start_pt, +hh, -hw)
+                
+                poly = BRepBuilderAPI_MakePolygon(p1, p2, p3, p4, True)
+                rect_wire = poly.Wire()
+                rect_face = BRepBuilderAPI_MakeFace(rect_wire).Face()
+                
+                # Sweep rectangle along arc
+                pipe = BRepOffsetAPI_MakePipe(arc_wire, rect_face).Shape()
+                return cq.Workplane("XY").add(cq.Shape(pipe))
+            else:
+                # Round wire: use torus
+                corner_axis = gp_Ax2(center_pt, axis_dir, x_ref_dir)
+                torus = BRepPrimAPI_MakeTorus(corner_axis, bend_radius, wire_radius, angle_rad).Shape()
+                return cq.Workplane("XY").add(cq.Shape(torus))
+        
         # 1. Inner tube: at X=0, Z=0, from Y=0 to Y=tube_length (going up through the hole)
         #    Create on XY plane (normal = +Z), rotate to point in +Y
-        inner_tube = cq.Workplane("XY").circle(wire_radius).extrude(tube_length)
+        inner_tube = create_tube(tube_length)
         inner_tube = inner_tube.rotate((0,0,0), (1,0,0), -90)  # Rotate to point in +Y
         
         # 2. Inner corner: connects inner tube (at Y=tube_length) to radial segment
@@ -815,14 +1019,13 @@ class CadQueryBuilder:
         #    Arc goes from +X (relative to center, connects to tube) to +Y (connects to radial)
         #    With axis +Z and Xref +X, rotating +X by 90° around +Z gives +Y ✓
         inner_corner_center = gp_Pnt(-bend_radius, tube_length, 0)
-        inner_corner_axis = gp_Ax2(inner_corner_center, gp_Dir(0, 0, 1), gp_Dir(1, 0, 0))
-        inner_corner_torus = BRepPrimAPI_MakeTorus(inner_corner_axis, bend_radius, wire_radius, math.pi / 2).Shape()
-        inner_corner = cq.Workplane("XY").add(cq.Shape(inner_corner_torus))
+        inner_corner = create_corner(inner_corner_center, gp_Dir(0, 0, 1), gp_Dir(1, 0, 0))
         
         # 3. Radial segment: at Y=radial_height, from inner corner to outer corner
         #    For multilayer, this needs to be tilted to connect to the outer wire at angle_diff
         #    The radial segment goes from (-bend_radius, radial_height, 0) toward outer position
-        radial_tube = cq.Workplane("XY").circle(wire_radius).extrude(radial_length)
+        #    swap_dims=True because after rotating -90° around Y, the cross-section is in YZ plane
+        radial_tube = create_tube(radial_length, swap_dims=True)
         radial_tube = radial_tube.rotate((0,0,0), (0,1,0), -90)  # Rotate to point in -X
         
         # Apply tilt for angle difference - rotate around Y at the inner corner position
@@ -838,12 +1041,10 @@ class CadQueryBuilder:
         #    Center is at (-radial_distance + bend_radius, tube_length, 0)
         #    For multilayer, this corner and outer tube are rotated by angle_diff around Y
         outer_corner_center = gp_Pnt(-radial_distance + bend_radius, tube_length, 0)
-        outer_corner_axis = gp_Ax2(outer_corner_center, gp_Dir(0, 0, 1), gp_Dir(0, 1, 0))
-        outer_corner_torus = BRepPrimAPI_MakeTorus(outer_corner_axis, bend_radius, wire_radius, math.pi / 2).Shape()
-        outer_corner = cq.Workplane("XY").add(cq.Shape(outer_corner_torus))
+        outer_corner = create_corner(outer_corner_center, gp_Dir(0, 0, 1), gp_Dir(0, 1, 0))
         
         # 5. Outer tube: at X=-radial_distance, Z=0, from Y=0 to Y=tube_length
-        outer_tube = cq.Workplane("XY").circle(wire_radius).extrude(tube_length)
+        outer_tube = create_tube(tube_length)
         outer_tube = outer_tube.rotate((0,0,0), (1,0,0), -90)  # Rotate to point in +Y
         outer_tube = outer_tube.translate((-radial_distance, 0, 0))
         

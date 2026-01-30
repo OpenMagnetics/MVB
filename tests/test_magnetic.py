@@ -216,6 +216,14 @@ class TestToroidal(TestMagnetic):
         assert len(turns) == expected_turns * 10, \
             f"Expected {expected_turns * 10} turn components, got {len(turns)}"
 
+    def test_toroidal_full_layer_rectangular_wires(self):
+        """Test creating a toroidal core with full layer of rectangular wire turns."""
+        self._run_test('toroidal_full_layer_rectangular_wires.json')
+
+    def test_toroidal_one_turn_rectangular_wire(self):
+        """Test creating a toroidal core with one rectangular wire turn."""
+        self._run_test('toroidal_one_turn_rectangular_wire.json')
+
 
 # =============================================================================
 # Concentric Tests
@@ -247,6 +255,14 @@ class TestConcentric(TestMagnetic):
     def test_concentric_round_column_four_layers(self):
         """Test PQ/RM core with round column and four layers."""
         self._run_test('concentric_round_column_four_layers.json')
+
+    def test_concentric_round_column_one_rectangular_turn(self):
+        """Test round column core with one rectangular wire turn."""
+        self._run_test('concentric_round_column_one_rectangular_turn.json')
+
+    def test_concentric_round_column_two_layers_rectangular_turns(self):
+        """Test round column core with two layers of rectangular wire turns."""
+        self._run_test('concentric_round_column_two_layers_rectangular_turns.json')
 
 
 if __name__ == '__main__':
