@@ -20,22 +20,18 @@ The hierarchical structure is:
 from cadquery_builder import (
     # Main builder class
     CadQueryBuilder,
-    
+
     # Data classes
     ColumnShape,
     WireType,
     BobbinProcessedDescription,
     WireDescription,
     TurnDescription,
-    
+
     # Helper functions
     convert_axis,
-    convert_axis_toroidal,
     resolve_dimensional_value,
     flatten_dimensions,
-    
-    # Convenience function
-    build_magnetic_from_mas,
 )
 
 # Aliases for backward compatibility with old class names

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Union, Dict, Any
 sys.path.append(os.path.dirname(__file__))
 import utils
+import shape_configs
 import cadquery as cq
 
 file_dir = os.path.dirname(__file__)
@@ -199,19 +200,7 @@ class BobbinProcessedDescription:
 
 
 def flatten_dimensions(data):
-    dimensions = data["dimensions"]
-    for k, v in dimensions.items():
-        if isinstance(v, dict):
-            if "nominal" not in v or v["nominal"] is None:
-                if "maximum" not in v or v["maximum"] is None:
-                    v["nominal"] = v["minimum"]
-                elif "minimum" not in v or v["minimum"] is None:
-                    v["nominal"] = v["maximum"]
-                else:
-                    v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
-        else:
-            dimensions[k] = {"nominal": v}
-    return {k: v["nominal"] for k, v in dimensions.items() if k != 'alpha'}
+    return utils.flatten_dimensions(data, scale_factor=1.0)
 
 
 def convert_axis(coordinates):
@@ -223,14 +212,14 @@ def convert_axis(coordinates):
         assert False, "Invalid coordinates length"
 
 
-class CadQueryBuilder:
+class CadQueryBuilder(utils.BuilderBase):
     """Builder for 3D magnetic component geometry using CadQuery.
-    
+
     This class creates 3D geometry for magnetic components including:
     - Core shapes (E, ETD, PQ, RM, toroidal, etc.)
     - Coil turns (concentric and toroidal winding styles)
     - Bobbins
-    
+
     Coordinate System (MAS to CadQuery mapping):
     - For concentric cores (E, PQ, RM, etc.):
         - X axis: Core depth direction (perpendicular to winding window)
@@ -238,20 +227,20 @@ class CadQueryBuilder:
         - Z axis: Core height direction (along core axis, vertical)
         - MAS coordinates[0] (radial) -> Y position
         - MAS coordinates[1] (height) -> Z position
-    
+
     - For toroidal cores:
         - Y axis: Core axis (toroid revolves around Y)
         - X axis: Radial direction (negative X = inside the donut hole)
         - Z axis: Tangential direction (along circumference at Y=0)
         - MAS coordinates[0] (radial) -> distance from Y axis
         - MAS coordinates[1] (angular) -> rotation angle around Y axis
-    
+
     Units:
     - All MAS input values are in meters
     - Internal geometry is built in millimeters for precision
     - Output is scaled back to meters before export
     """
-    
+
     # Scale factor: build geometry in mm, scale back to meters for output
     SCALE = 1000.0
 
@@ -277,18 +266,6 @@ class CadQueryBuilder:
             utils.ShapeFamily.UR: self.Ur(),
             utils.ShapeFamily.T: self.T(),
             utils.ShapeFamily.C: self.C()
-        }
-
-    def factory(self, data):
-        family = utils.ShapeFamily[data['family'].upper().replace(" ", "_")]
-        return self.shapers[family]
-
-    def get_families(self):
-        return {
-            shaper.name.lower()
-            .replace("_", " "): self.factory({'family': shaper.name})
-            .get_dimensions_and_subtypes()
-            for shaper in self.shapers
         }
 
     def get_spacer(self, geometrical_data):
@@ -1246,8 +1223,9 @@ class CadQueryBuilder:
 
             return result
 
-        @abstractmethod
         def get_shape_extras(self, data, piece):
+            dimensions = data["dimensions"]
+            piece = piece.translate((0, 0, -dimensions["B"]))
             return piece
 
         def get_dimensions_and_subtypes(self):
@@ -1386,12 +1364,7 @@ class CadQueryBuilder:
     class P(IPiece):
 
         def get_dimensions_and_subtypes(self):
-            return {
-                1: ["A", "B", "C", "D", "E", "F", "G", "H"],
-                2: ["A", "B", "C", "D", "E", "F", "G", "H"],
-                3: ["A", "B", "D", "E", "F", "G", "H"],
-                4: ["A", "B", "C", "D", "E", "F", "G", "H"]
-            }
+            return shape_configs.P_DIMENSIONS_AND_SUBTYPES
 
         def get_shape_extras(self, data, piece):
             dimensions = data["dimensions"]
@@ -1528,7 +1501,12 @@ class CadQueryBuilder:
 
     class Pq(P):
         def get_dimensions_and_subtypes(self):
-            return {1: ["A", "B", "C", "D", "E", "F", "G"]} 
+            return {1: ["A", "B", "C", "D", "E", "F", "G"]}
+
+        def get_shape_extras(self, data, piece):
+            dimensions = data["dimensions"]
+            piece = piece.translate((0, 0, -dimensions["B"]))
+            return piece
 
         def get_shape_base(self, data):
             dimensions = data["dimensions"]
@@ -1594,19 +1572,9 @@ class CadQueryBuilder:
             sketch = sketch.solve().assemble()
             return sketch
 
-        def get_shape_extras(self, data, piece):
-            dimensions = data["dimensions"]
-            piece = piece.translate((0, 0, -dimensions["B"]))
-            return piece
-
     class Rm(P):
         def get_dimensions_and_subtypes(self):
-            return {
-                1: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
-                2: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
-                3: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
-                4: ["A", "B", "C", "D", "E", "F", "G", "H", "J"]
-            }
+            return shape_configs.RM_DIMENSIONS_AND_SUBTYPES
 
         def get_shape_base(self, data):
             dimensions = data["dimensions"]
@@ -1906,13 +1874,6 @@ class CadQueryBuilder:
 
             return result
 
-        def get_shape_extras(self, data, piece):
-            dimensions = data["dimensions"]
-
-            piece = piece.translate((0, 0, -dimensions["B"]))
-
-            return piece
-
         def apply_machining(self, piece, machining, dimensions):
             length = dimensions["A"]
             if machining['coordinates'][0] == 0:
@@ -1998,11 +1959,6 @@ class CadQueryBuilder:
                 winding_window = winding_window + cut
             return winding_window
 
-        def get_shape_extras(self, data, piece):
-            dimensions = data["dimensions"]
-            piece = piece.translate((0, 0, -dimensions["B"]))
-            return piece
-
     class El(E):
         def get_dimensions_and_subtypes(self):
             return {1: ["A", "B", "C", "D", "E", "F", "F2"]}
@@ -2047,11 +2003,6 @@ class CadQueryBuilder:
 
             return negative_winding_window
 
-        def get_shape_extras(self, data, piece):
-            dimensions = data["dimensions"]
-            piece = piece.translate((0, 0, -dimensions["B"]))
-            return piece
-
     class Etd(Er):
         def get_dimensions_and_subtypes(self):
             return {1: ["A", "B", "C", "D", "E", "F"]}
@@ -2061,13 +2012,6 @@ class CadQueryBuilder:
             return {
                 1: ["A", "B", "C", "D", "E", "F", "G"],
             }
-
-        def get_shape_extras(self, data, piece):
-            dimensions = data["dimensions"]
-            piece = piece.translate((0, 0, -dimensions["B"]))
-            # fillet_radius = (dimensions["B"] - dimensions["D"]) / 2
-            # piece = piece.edges("|X").edges("<Y").edges("<Z").fillet(fillet_radius)
-            return piece
 
         def get_negative_winding_window(self, dimensions):
 
@@ -2133,15 +2077,6 @@ class CadQueryBuilder:
             winding_window = winding_window_cylinder - central_column_cylinder
 
             return winding_window
-
-        def get_shape_extras(self, data, piece):
-            dimensions = data["dimensions"]
-            piece = piece.translate((0, 0, -dimensions["B"]))
-            # fillet_radius = (dimensions["B"] - dimensions["D"]) / 2
-
-            # piece = piece.edges("|X").edges("<Y").all()[2].fillet(fillet_radius)
-            # piece = piece.edges("|X").edges(">Y").all()[0].fillet(fillet_radius)
-            return piece
 
     class Ec(Er):
         def get_dimensions_and_subtypes(self):
@@ -2312,11 +2247,6 @@ class CadQueryBuilder:
             machined_piece = piece - tool
 
             return machined_piece
-
-        def get_shape_extras(self, data, piece):
-            dimensions = data["dimensions"]
-            piece = piece.translate((0, 0, -dimensions["B"]))
-            return piece
 
     class Epx(E):
         def get_dimensions_and_subtypes(self):
@@ -2662,7 +2592,7 @@ class CadQueryBuilder:
             return result
 
         def get_dimensions_and_subtypes(self):
-            return {1: ["A", "B", "C", "D", "E"]}
+            return shape_configs.U_DIMENSIONS_AND_SUBTYPES
 
         def get_negative_winding_window(self, dimensions):
             winding_column_width = (dimensions["A"] - dimensions["E"]) / 2
@@ -2688,20 +2618,9 @@ class CadQueryBuilder:
 
             return machined_piece
 
-        def get_shape_extras(self, data, piece):
-            dimensions = data["dimensions"]
-
-            piece = piece.translate((0, 0, -dimensions["B"]))
-            return piece
-
     class Ur(IPiece):
         def get_dimensions_and_subtypes(self):
-            return {
-                1: ["A", "B", "C", "D", "H"],
-                2: ["A", "B", "C", "D", "H"],
-                3: ["A", "B", "C", "D", "F", "H"],
-                4: ["A", "B", "C", "D", "F", "G", "H"]
-            }
+            return shape_configs.UR_DIMENSIONS_AND_SUBTYPES
 
         def get_shape_extras(self, data, piece):
             dimensions = data["dimensions"]
@@ -2956,63 +2875,7 @@ class CadQueryBuilder:
             piece = piece.rotate((0, 1, 0), (0, -1, 0), 90)
             return piece
 
-    class C(IPiece):
-        def get_shape_base(self, data):
-            dimensions = data["dimensions"]
-
-            c = dimensions["C"] / 2
-            winding_column_width = (dimensions["A"] - dimensions["E"]) / 2
-            left_a = dimensions["A"] - winding_column_width / 2
-            right_a = winding_column_width / 2
-
-            result = (
-                cq.Sketch()
-                .segment((right_a, c), (-left_a, c), "top_line")
-                .segment((-left_a, c), (-left_a, -c), "left_line")
-                .segment((-left_a, -c), (right_a, -c), "bottom_line")
-                .segment((right_a, -c), (right_a, c), "right_line")
-
-                .constrain("top_line", "left_line", 'Coincident', None)
-                .constrain("left_line", "bottom_line", 'Coincident', None)
-                .constrain("bottom_line", "right_line", 'Coincident', None)
-                .constrain("right_line", "top_line", 'Coincident', None)
-                .constrain("right_line", 'Orientation', (0, 1))
-                .constrain("left_line", 'Orientation', (0, 1))
-                .constrain("top_line", 'Orientation', (1, 0))
-                .constrain("bottom_line", 'Orientation', (1, 0))
-                .solve()
-                .assemble()
-            )
-
-            return result
-
-        def get_dimensions_and_subtypes(self):
-            return {1: ["A", "B", "C", "D", "E"]}
-
-        def get_negative_winding_window(self, dimensions):
-            winding_column_width = (dimensions["A"] - dimensions["E"]) / 2
-            negative_winding_window = (
-                cq.Workplane()
-                .box(dimensions["E"], dimensions["C"] * 2, dimensions["D"])
-                .tag("negative_winding_window")
-                .translate((-(winding_column_width / 2 + dimensions["E"] / 2), 0, dimensions["D"] / 2 + (dimensions["B"] - dimensions["D"])))
-            )
-            return negative_winding_window
-
-        def apply_machining(self, piece, machining, dimensions):
-            winding_column_width = (dimensions["A"] - dimensions["E"]) / 2
-            translate = convert_axis(machining['coordinates'])
-            gap = (
-                cq.Workplane()
-                .box(winding_column_width, dimensions["C"], machining['length'])
-                .tag("gap")
-                .translate(translate)
-            )
-
-            machined_piece = piece - gap
-
-            return machined_piece
-
+    class C(U):
         def get_shape_extras(self, data, piece):
             dimensions = data["dimensions"]
             fillet_radius = (dimensions["A"] - dimensions["E"]) / 2

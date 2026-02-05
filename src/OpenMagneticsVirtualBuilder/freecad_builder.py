@@ -9,28 +9,17 @@ import pathlib
 import platform
 sys.path.append(os.path.dirname(__file__))
 import utils
+import shape_configs
 
 file_dir = os.path.dirname(__file__)
 sys.path.append(file_dir)
 
 
 def flatten_dimensions(data):
-    dimensions = data["dimensions"]
-    for k, v in dimensions.items():
-        if isinstance(v, dict):
-            if "nominal" not in v or v["nominal"] is None:
-                if "maximum" not in v or v["maximum"] is None:
-                    v["nominal"] = v["minimum"]
-                elif "minimum" not in v or v["minimum"] is None:
-                    v["nominal"] = v["maximum"]
-                else:
-                    v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
-        else:
-            dimensions[k] = {"nominal": v}
-    return {k: v["nominal"] * 1000 for k, v in dimensions.items() if k != 'alpha'}
+    return utils.flatten_dimensions(data, scale_factor=1000)
 
 
-class FreeCADBuilder:
+class FreeCADBuilder(utils.BuilderBase):
     """
     Class for calculating the different areas and length of every shape according to EN 60205.
     Each shape will create a daughter of this class and define their own equations
@@ -86,7 +75,7 @@ class FreeCADBuilder:
                 freecad_name = "freecad-daily"
             elif os.path.exists("/usr/lib/freecad"):
                 freecad_name = "freecad"
-            
+
             sys.path.insert(0, "/usr/lib/python3/dist-packages")
 
             if freecad_name is not None:
@@ -108,17 +97,57 @@ class FreeCADBuilder:
                 # Comment line 31 from /usr/local/Mod/Draft/draftutils/params.py if it crashes at import
                 # import Arch_rc
 
-    def factory(self, data):
-        family = utils.ShapeFamily[data['family'].upper().replace(" ", "_")]
-        return self.shapers[family]
+    @staticmethod
+    def _create_dimension_svg(starting_coordinates, ending_coordinates, dimension_type, dimension_label,
+                              view_x, view_y, colors, dimension_font_size, dimension_line_thickness,
+                              label_offset=0, label_alignment=0, arrow_size=6, arrow_length=15):
+        dimension_svg = ""
 
-    def get_families(self):
-        return {
-            shaper.name.lower()
-            .replace("_", " "): self.factory({'family': shaper.name})
-            .get_dimensions_and_subtypes()
-            for shaper in self.shapers
-        }
+        if dimension_type == "DistanceY":
+            main_line_start = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
+            main_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
+            left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
+            left_aux_line_end = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
+            right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
+            right_aux_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
+
+            dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view_x + ending_coordinates[0] + label_offset - dimension_font_size / 4},{1000 - view_y + label_alignment})" stroke-linecap="square" stroke-linejoin="bevel">
+                                     <text x="0" y="0" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400" transform="rotate(-90)">{dimension_label}</text>
+                                    </g>\n""".replace("                                    ", "")
+            dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view_x},{1000 - view_y})" stroke-linecap="round" stroke-linejoin="bevel">
+                                      <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
+                                    </g>\n""".replace("                                     ", "")
+            dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view_x},{1000 - view_y})" stroke-linecap="round" stroke-linejoin="bevel">
+                                     <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0] + label_offset},{ending_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
+                                      <path fill-rule="evenodd" vector-effect="none" d="M0,0 L{arrow_size},-{arrow_length} L-{arrow_size},-{arrow_length} L0,0"/>
+                                     </g>
+                                     <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0] + label_offset},{starting_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
+                                      <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-{arrow_size},{arrow_length} L{arrow_size},{arrow_length} L0,0"/>
+                                     </g>
+                                    </g>\n""".replace("                                     ", "")
+        elif dimension_type == "DistanceX":
+            main_line_start = [starting_coordinates[0], starting_coordinates[1] + label_offset]
+            main_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
+            left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
+            left_aux_line_end = [starting_coordinates[0], starting_coordinates[1] + label_offset]
+            right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
+            right_aux_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
+
+            dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view_x + label_alignment},{1000 - view_y})" stroke-linecap="square" stroke-linejoin="bevel">
+                                     <text x="0" y="{ending_coordinates[1] + label_offset - dimension_font_size / 4}" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400">{dimension_label}</text>
+                                    </g>\n""".replace("                                    ", "")
+            dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view_x},{1000 - view_y})" stroke-linecap="round" stroke-linejoin="bevel">
+                                      <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
+                                    </g>\n""".replace("                                     ", "")
+            dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view_x},{1000 - view_y})" stroke-linecap="round" stroke-linejoin="bevel">
+                                     <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0]},{ending_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
+                                      <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-{arrow_length},-{arrow_size} L-{arrow_length},{arrow_size} L0,0"/>
+                                     </g>
+                                     <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0]},{starting_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
+                                      <path fill-rule="evenodd" vector-effect="none" d="M0,0 L{arrow_length},{arrow_size} L{arrow_length},-{arrow_size} L0,0"/>
+                                     </g>
+                                    </g>\n""".replace("                                     ", "")
+        return dimension_svg
 
     def get_spacer(self, geometrical_data):
         import FreeCAD
@@ -340,54 +369,11 @@ class FreeCADBuilder:
         import TechDraw
     
         def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
-            dimension_svg = ""
-    
-            if dimension_type == "DistanceY":
-                main_line_start = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                main_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-                left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                left_aux_line_end = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                right_aux_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-    
-                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + ending_coordinates[0] + label_offset - dimension_font_size / 4},{1000 - view.Y.Value + label_alignment})" stroke-linecap="square" stroke-linejoin="bevel">
-                                      < text x="0" y="0" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400" transform="rotate(-90)">{dimension_label}</text>
-                                     </ g>\n""".replace("                                    ", "")
-                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                       <    path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                     </ g>\n""".replace("                                     ", "")
-                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                      < g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0] + label_offset},{ending_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                       <    path fill-rule="evenodd" vector-effect="none" d="M0,0 L3,-10 L-3,-10 L0,0"/>
-                                      </    g>
-                                      < g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0] + label_offset},{starting_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                       <    path fill-rule="evenodd" vector-effect="none" d="M0,0 L-3,10 L3,10 L0,0"/>
-                                      </    g>
-                                     </ g>\n""".replace("                                     ", "")
-            elif dimension_type == "DistanceX":
-                main_line_start = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                main_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-                left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                left_aux_line_end = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                right_aux_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-    
-                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="square" stroke-linejoin="bevel">
-                                      < text x="0" y="{ending_coordinates[1] + label_offset - dimension_font_size / 4}" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400">{dimension_label}</text>
-                                     </ g>\n""".replace("                                    ", "")
-                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                       <    path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                     </ g>\n""".replace("                                     ", "")
-                dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                      < g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0]},{ending_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                       <    path fill-rule="evenodd" vector-effect="none" d="M0,0 L-10,-3 L-10,3 L0,0"/>
-                                      </    g>
-                                      < g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0]},{starting_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                       <    path fill-rule="evenodd" vector-effect="none" d="M0,0 L10,3 L10,-3 L0,0"/>
-                                      </    g>
-                                     </ g>\n""".replace("                                     ", "")
-            return dimension_svg
-    
+            return FreeCADBuilder._create_dimension_svg(
+                starting_coordinates, ending_coordinates, dimension_type, dimension_label,
+                view.X.Value, view.Y.Value, colors, dimension_font_size, dimension_line_thickness,
+                label_offset, label_alignment, arrow_size=3, arrow_length=10)
+
         projection_line_thickness = 4
         dimension_line_thickness = 1
         dimension_font_size = 20
@@ -662,6 +648,38 @@ class FreeCADBuilder:
             part.TaperAngleRev = 0.
 
             return part
+
+        @staticmethod
+        def _rotate_piece_z_180(piece):
+            m = piece.Base.Placement.Matrix
+            m.rotateZ(math.radians(180))
+            piece.Base.Placement.Matrix = m
+            return piece
+
+        @staticmethod
+        def _create_rectangular_sketch(sketch, dimensions):
+            import FreeCAD
+            import Part
+            import Sketcher
+            c = dimensions["C"] / 2
+            a = dimensions["A"] / 2
+
+            top_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, a, 0), FreeCAD.Vector(c, a, 0)), False)
+            right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, a, 0), FreeCAD.Vector(c, -a, 0)), False)
+            bottom_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, -a, 0), FreeCAD.Vector(-c, -a, 0)), False)
+            left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, -a, 0), FreeCAD.Vector(-c, a, 0)), False)
+            sketch.addConstraint(Sketcher.Constraint('Coincident', top_line, 2, right_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', right_line, 2, bottom_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', bottom_line, 2, left_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('Coincident', left_line, 2, top_line, 1))
+            sketch.addConstraint(Sketcher.Constraint('DistanceY', bottom_line, 1, -1, 1, a))
+            sketch.addConstraint(Sketcher.Constraint('DistanceY', top_line, 1, -1, 1, -a))
+            sketch.addConstraint(Sketcher.Constraint('DistanceX', left_line, 1, -1, 1, c))
+            sketch.addConstraint(Sketcher.Constraint('DistanceX', right_line, 1, -1, 1, -c))
+            sketch.addConstraint(Sketcher.Constraint('Vertical', right_line))
+            sketch.addConstraint(Sketcher.Constraint('Vertical', left_line))
+            sketch.addConstraint(Sketcher.Constraint('Horizontal', top_line))
+            sketch.addConstraint(Sketcher.Constraint('Horizontal', bottom_line))
 
         @abstractmethod
         def get_shape_extras(self, data, piece):
@@ -1017,54 +1035,10 @@ class FreeCADBuilder:
                 return base_width, base_height
 
             def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
-
-                dimension_svg = ""
-
-                if dimension_type == "DistanceY":
-                    main_line_start = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                    main_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-                    left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                    left_aux_line_end = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                    right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                    right_aux_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + ending_coordinates[0] + label_offset - dimension_font_size / 4},{1000 - view.Y.Value + label_alignment})" stroke-linecap="square" stroke-linejoin="bevel">
-                                             <text x="0" y="0" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400" transform="rotate(-90)">{dimension_label}</text>
-                                            </g>\n""".replace("                                    ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                            </g>\n""".replace("                                     ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0] + label_offset},{ending_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L6,-15 L-6,-15 L0,0"/>
-                                             </g>
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0] + label_offset},{starting_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-6,15 L6,15 L0,0"/>
-                                             </g>
-                                            </g>\n""".replace("                                     ", "")
-                elif dimension_type == "DistanceX":
-                    main_line_start = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                    main_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-                    left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                    left_aux_line_end = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                    right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                    right_aux_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="square" stroke-linejoin="bevel">
-                                             <text x="0" y="{ending_coordinates[1] + label_offset - dimension_font_size / 4}" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400">{dimension_label}</text>
-                                            </g>\n""".replace("                                    ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                            </g>\n""".replace("                                     ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0]},{ending_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-15,-6 L-15,6 L0,0"/>
-                                             </g>
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0]},{starting_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L15,6 L15,-6 L0,0"/>
-                                             </g>
-                                            </g>\n""".replace("                                     ", "")
-                return dimension_svg
+                return FreeCADBuilder._create_dimension_svg(
+                    starting_coordinates, ending_coordinates, dimension_type, dimension_label,
+                    view.X.Value, view.Y.Value, colors, dimension_font_size, dimension_line_thickness,
+                    label_offset, label_alignment)
 
             projection_line_thickness = 4
             dimension_line_thickness = 1
@@ -1314,19 +1288,11 @@ class FreeCADBuilder:
     class P(IPiece):
 
         def get_dimensions_and_subtypes(self):
-            return {
-                1: ["A", "B", "C", "D", "E", "F", "G", "H"],
-                2: ["A", "B", "C", "D", "E", "F", "G", "H"],
-                3: ["A", "B", "D", "E", "F", "G", "H"],
-                4: ["A", "B", "C", "D", "E", "F", "G", "H"]
-            }
+            return shape_configs.P_DIMENSIONS_AND_SUBTYPES
 
         def get_shape_extras(self, data, piece):
             import FreeCAD
-            # rotation in order to avoid cut in projection
-            m = piece.Base.Placement.Matrix
-            m.rotateZ(math.radians(180))
-            piece.Base.Placement.Matrix = m
+            self._rotate_piece_z_180(piece)
 
             dimensions = data["dimensions"]
             familySubtype = data["familySubtype"]
@@ -1711,12 +1677,7 @@ class FreeCADBuilder:
 
     class Rm(P):
         def get_dimensions_and_subtypes(self):
-            return {
-                1: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
-                2: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
-                3: ["A", "B", "C", "D", "E", "F", "G", "H", "J"],
-                4: ["A", "B", "C", "D", "E", "F", "G", "H", "J"]
-            }
+            return shape_configs.RM_DIMENSIONS_AND_SUBTYPES
 
         def get_shape_base(self, data, sketch):
             import FreeCAD
@@ -1825,11 +1786,7 @@ class FreeCADBuilder:
                 sketch.addConstraint(Sketcher.Constraint('Horizontal', top_right_line_x_degrees, 2, top_left_line_x_degrees, 2))
 
         def get_shape_extras(self, data, piece):
-            # rotation in order to avoid cut in projection
-            m = piece.Base.Placement.Matrix
-            m.rotateZ(math.radians(180))
-            piece.Base.Placement.Matrix = m
-            return piece
+            return self._rotate_piece_z_180(piece)
 
     class Pm(P):
         def get_dimensions_and_subtypes(self):
@@ -1939,11 +1896,7 @@ class FreeCADBuilder:
             sketch.addConstraint(Sketcher.Constraint('Coincident', bottom_dent_right, 2, external_circle_bottom_right, 1))
 
         def get_shape_extras(self, data, piece):
-            # rotation in order to avoid cut in projection
-            m = piece.Base.Placement.Matrix
-            m.rotateZ(math.radians(180))
-            piece.Base.Placement.Matrix = m
-            return piece
+            return self._rotate_piece_z_180(piece)
 
     class E(IPiece):
         def get_negative_winding_window(self, dimensions):
@@ -1970,30 +1923,8 @@ class FreeCADBuilder:
             return negative_winding_window
 
         def get_shape_base(self, data, sketch):
-            import FreeCAD
-            import Part
-            import Sketcher
             dimensions = data["dimensions"]
-
-            c = dimensions["C"] / 2
-            a = dimensions["A"] / 2
-
-            top_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, a, 0), FreeCAD.Vector(c, a, 0)), False)
-            right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, a, 0), FreeCAD.Vector(c, -a, 0)), False)
-            bottom_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, -a, 0), FreeCAD.Vector(-c, -a, 0)), False)
-            left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, -a, 0), FreeCAD.Vector(-c, a, 0)), False)
-            sketch.addConstraint(Sketcher.Constraint('Coincident', top_line, 2, right_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Coincident', right_line, 2, bottom_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Coincident', bottom_line, 2, left_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Coincident', left_line, 2, top_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('DistanceY', bottom_line, 1, -1, 1, a))
-            sketch.addConstraint(Sketcher.Constraint('DistanceY', top_line, 1, -1, 1, -a))
-            sketch.addConstraint(Sketcher.Constraint('DistanceX', left_line, 1, -1, 1, c))
-            sketch.addConstraint(Sketcher.Constraint('DistanceX', right_line, 1, -1, 1, -c))
-            sketch.addConstraint(Sketcher.Constraint('Vertical', right_line))
-            sketch.addConstraint(Sketcher.Constraint('Vertical', left_line))
-            sketch.addConstraint(Sketcher.Constraint('Horizontal', top_line))
-            sketch.addConstraint(Sketcher.Constraint('Horizontal', bottom_line))
+            self._create_rectangular_sketch(sketch, dimensions)
 
         def get_shape_extras(self, data, piece):
             return piece
@@ -2738,7 +2669,7 @@ class FreeCADBuilder:
 
     class U(E):
         def get_dimensions_and_subtypes(self):
-            return {1: ["A", "B", "C", "D", "E"]}
+            return shape_configs.U_DIMENSIONS_AND_SUBTYPES
 
         def get_negative_winding_window(self, dimensions):
             import FreeCAD
@@ -2821,12 +2752,7 @@ class FreeCADBuilder:
 
     class Ur(IPiece):
         def get_dimensions_and_subtypes(self):
-            return {
-                1: ["A", "B", "C", "D", "H"],
-                2: ["A", "B", "C", "D", "H"],
-                3: ["A", "B", "C", "D", "F", "H"],
-                4: ["A", "B", "C", "D", "F", "G", "H"]
-            }
+            return shape_configs.UR_DIMENSIONS_AND_SUBTYPES
 
         def get_shape_extras(self, data, piece):
             import FreeCAD
@@ -3011,53 +2937,10 @@ class FreeCADBuilder:
                 return base_width, base_height
 
             def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
-                dimension_svg = ""
-
-                if dimension_type == "DistanceY":
-                    main_line_start = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                    main_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-                    left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                    left_aux_line_end = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                    right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                    right_aux_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + ending_coordinates[0] + label_offset - dimension_font_size / 4},{1000 - view.Y.Value + label_alignment})" stroke-linecap="square" stroke-linejoin="bevel">
-                                             <text x="0" y="0" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400" transform="rotate(-90)">{dimension_label}</text>
-                                            </g>\n""".replace("                                    ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                            </g>\n""".replace("                                     ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0] + label_offset},{ending_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L6,-15 L-6,-15 L0,0"/>
-                                             </g>
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0] + label_offset},{starting_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-6,15 L6,15 L0,0"/>
-                                             </g>
-                                            </g>\n""".replace("                                     ", "")
-                elif dimension_type == "DistanceX":
-                    main_line_start = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                    main_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-                    left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                    left_aux_line_end = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                    right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                    right_aux_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + label_alignment},{1000 - view.Y.Value})" stroke-linecap="square" stroke-linejoin="bevel">
-                                             <text x="0" y="{ending_coordinates[1] + label_offset - dimension_font_size / 4}" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400">{dimension_label}</text>
-                                            </g>\n""".replace("                                    ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                            </g>\n""".replace("                                     ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0]},{ending_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-15,-6 L-15,6 L0,0"/>
-                                             </g>
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0]},{starting_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L15,6 L15,-6 L0,0"/>
-                                             </g>
-                                            </g>\n""".replace("                                     ", "")
-                return dimension_svg
+                return FreeCADBuilder._create_dimension_svg(
+                    starting_coordinates, ending_coordinates, dimension_type, dimension_label,
+                    view.X.Value, view.Y.Value, colors, dimension_font_size, dimension_line_thickness,
+                    label_offset, label_alignment)
 
             projection_line_thickness = 4
             dimension_line_thickness = 1
@@ -3262,29 +3145,8 @@ class FreeCADBuilder:
             return columns
 
         def get_shape_base(self, data, sketch):
-            import FreeCAD
-            import Part
-            import Sketcher
             dimensions = data["dimensions"]
-            c = dimensions["C"] / 2
-            a = dimensions["A"] / 2
-
-            top_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, a, 0), FreeCAD.Vector(c, a, 0)), False)
-            right_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, a, 0), FreeCAD.Vector(c, -a, 0)), False)
-            bottom_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(c, -a, 0), FreeCAD.Vector(-c, -a, 0)), False)
-            left_line = sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(-c, -a, 0), FreeCAD.Vector(-c, a, 0)), False)
-            sketch.addConstraint(Sketcher.Constraint('Coincident', top_line, 2, right_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Coincident', right_line, 2, bottom_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Coincident', bottom_line, 2, left_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('Coincident', left_line, 2, top_line, 1))
-            sketch.addConstraint(Sketcher.Constraint('DistanceY', bottom_line, 1, -1, 1, a))
-            sketch.addConstraint(Sketcher.Constraint('DistanceY', top_line, 1, -1, 1, -a))
-            sketch.addConstraint(Sketcher.Constraint('DistanceX', left_line, 1, -1, 1, c))
-            sketch.addConstraint(Sketcher.Constraint('DistanceX', right_line, 1, -1, 1, -c))
-            sketch.addConstraint(Sketcher.Constraint('Vertical', right_line))
-            sketch.addConstraint(Sketcher.Constraint('Vertical', left_line))
-            sketch.addConstraint(Sketcher.Constraint('Horizontal', top_line))
-            sketch.addConstraint(Sketcher.Constraint('Horizontal', bottom_line))
+            self._create_rectangular_sketch(sketch, dimensions)
 
         def get_negative_winding_window(self, dimensions):
             import FreeCAD
@@ -3398,53 +3260,10 @@ class FreeCADBuilder:
                 return base_width, base_height
 
             def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
-                dimension_svg = ""
-
-                if dimension_type == "DistanceY":
-                    main_line_start = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                    main_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-                    left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                    left_aux_line_end = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                    right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                    right_aux_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + ending_coordinates[0] + label_offset - dimension_font_size / 4},{1000 - view.Y.Value + label_alignment})" stroke-linecap="square" stroke-linejoin="bevel">
-                                             <text x="0" y="0" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400" transform="rotate(-90)">{dimension_label}</text>
-                                            </g>\n""".replace("                                    ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                            </g>\n""".replace("                                     ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0] + label_offset},{ending_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L6,-15 L-6,-15 L0,0"/>
-                                             </g>
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0] + label_offset},{starting_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-6,15 L6,15 L0,0"/>
-                                             </g>
-                                            </g>\n""".replace("                                     ", "")
-                elif dimension_type == "DistanceX":
-                    main_line_start = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                    main_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-                    left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                    left_aux_line_end = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                    right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                    right_aux_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + label_alignment},{1000 - view.Y.Value})" stroke-linecap="square" stroke-linejoin="bevel">
-                                             <text x="0" y="{ending_coordinates[1] + label_offset - dimension_font_size / 4}" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400">{dimension_label}</text>
-                                            </g>\n""".replace("                                    ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                            </g>\n""".replace("                                     ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0]},{ending_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-15,-6 L-15,6 L0,0"/>
-                                             </g>
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0]},{starting_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L15,6 L15,-6 L0,0"/>
-                                             </g>
-                                            </g>\n""".replace("                                     ", "")
-                return dimension_svg
+                return FreeCADBuilder._create_dimension_svg(
+                    starting_coordinates, ending_coordinates, dimension_type, dimension_label,
+                    view.X.Value, view.Y.Value, colors, dimension_font_size, dimension_line_thickness,
+                    label_offset, label_alignment)
 
             projection_line_thickness = 4
             dimension_line_thickness = 1
@@ -3586,11 +3405,7 @@ class FreeCADBuilder:
             sketch.addConstraint(Sketcher.Constraint('Diameter', outer_circle, dimensions["A"]))
 
         def get_shape_extras(self, data, piece):
-            # rotation in order to avoid cut in projection
-            m = piece.Base.Placement.Matrix
-            m.rotateZ(math.radians(180))
-            piece.Base.Placement.Matrix = m
-            return piece
+            return self._rotate_piece_z_180(piece)
 
         def get_top_projection(self, data, piece, margin):
             import FreeCAD
@@ -3670,53 +3485,10 @@ class FreeCADBuilder:
                 return base_width, base_height
 
             def create_dimension(starting_coordinates, ending_coordinates, dimension_type, dimension_label, label_offset=0, label_alignment=0):
-                dimension_svg = ""
-
-                if dimension_type == "DistanceY":
-                    main_line_start = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                    main_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-                    left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                    left_aux_line_end = [starting_coordinates[0] + label_offset, starting_coordinates[1]]
-                    right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                    right_aux_line_end = [ending_coordinates[0] + label_offset, ending_coordinates[1]]
-
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + ending_coordinates[0] + label_offset - dimension_font_size / 4},{1000 - view.Y.Value + label_alignment})" stroke-linecap="square" stroke-linejoin="bevel">
-                                             <text x="0" y="0" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400" transform="rotate(-90)">{dimension_label}</text>
-                                            </g>\n""".replace("                                    ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                            </g>\n""".replace("                                     ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0] + label_offset},{ending_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L6,-15 L-6,-15 L0,0"/>
-                                             </g>
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0] + label_offset},{starting_coordinates[1]})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-6,15 L6,15 L0,0"/>
-                                             </g>
-                                            </g>\n""".replace("                                     ", "")
-                elif dimension_type == "DistanceX":
-                    main_line_start = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                    main_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-                    left_aux_line_start = [starting_coordinates[0], starting_coordinates[1]]
-                    left_aux_line_end = [starting_coordinates[0], starting_coordinates[1] + label_offset]
-                    right_aux_line_start = [ending_coordinates[0], ending_coordinates[1]]
-                    right_aux_line_end = [ending_coordinates[0], ending_coordinates[1] + label_offset]
-
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value + label_alignment},{1000 - view.Y.Value})" stroke-linecap="square" stroke-linejoin="bevel">
-                                             <text x="0" y="{ending_coordinates[1] + label_offset - dimension_font_size / 4}" text-anchor="middle" fill-opacity="1" font-size="{dimension_font_size}" font-style="normal" fill="{colors['dimension_color']}" font-family="osifont" stroke="none" xml:space="preserve" font-weight="400">{dimension_label}</text>
-                                            </g>\n""".replace("                                    ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M{main_line_start[0]},{main_line_start[1]} L{main_line_end[0]},{main_line_end[1]} M{left_aux_line_start[0]},{left_aux_line_start[1]} L{left_aux_line_end[0]},{left_aux_line_end[1]} M{right_aux_line_start[0]},{right_aux_line_start[1]} L{right_aux_line_end[0]},{right_aux_line_end[1]}"/>
-                                            </g>\n""".replace("                                     ", "")
-                    dimension_svg += f"""   <g font-size="29.1042" font-style="normal" stroke-opacity="1" fill="none" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="{dimension_line_thickness}" font-weight="400" transform="matrix(1,0,0,1,{view.X.Value},{1000 - view.Y.Value})" stroke-linecap="round" stroke-linejoin="bevel">
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{ending_coordinates[0]},{ending_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L-15,-6 L-15,6 L0,0"/>
-                                             </g>
-                                             <g fill-opacity="1" font-size="29.1042" font-style="normal" stroke-opacity="1" fill="{colors['dimension_color']}" font-family="MS Shell Dlg 2" stroke="{colors['dimension_color']}" stroke-width="1" font-weight="400" transform="matrix(1,0,0,1,{starting_coordinates[0]},{starting_coordinates[1] + label_offset})" stroke-linecap="round" stroke-linejoin="bevel">
-                                              <path fill-rule="evenodd" vector-effect="none" d="M0,0 L15,6 L15,-6 L0,0"/>
-                                             </g>
-                                            </g>\n""".replace("                                     ", "")
-                return dimension_svg
+                return FreeCADBuilder._create_dimension_svg(
+                    starting_coordinates, ending_coordinates, dimension_type, dimension_label,
+                    view.X.Value, view.Y.Value, colors, dimension_font_size, dimension_line_thickness,
+                    label_offset, label_alignment)
 
             projection_line_thickness = 4
             dimension_line_thickness = 1

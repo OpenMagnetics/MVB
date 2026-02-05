@@ -14,22 +14,6 @@ file_dir = os.path.dirname(__file__)
 sys.path.append(file_dir)
 
 
-def flatten_dimensions(data):
-    dimensions = data["dimensions"]
-    for k, v in dimensions.items():
-        if isinstance(v, dict):
-            if "nominal" not in v or v["nominal"] is None:
-                if "maximum" not in v or v["maximum"] is None:
-                    v["nominal"] = v["minimum"]
-                elif "minimum" not in v or v["minimum"] is None:
-                    v["nominal"] = v["maximum"]
-                else:
-                    v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
-        else:
-            dimensions[k] = {"nominal": v}
-    return {k: v["nominal"] * 1000 for k, v in dimensions.items() if k != 'alpha'}
-
-
 class Builder:
     """
     Class for building 3D models of magnetic components.

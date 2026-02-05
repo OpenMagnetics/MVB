@@ -35,6 +35,38 @@ class ShapeFamily(enum.Enum, metaclass=Meta):
     C = enum.auto()
 
 
+def flatten_dimensions(data, scale_factor=1.0):
+    dimensions = data["dimensions"]
+    for k, v in dimensions.items():
+        if isinstance(v, dict):
+            if "nominal" not in v or v["nominal"] is None:
+                if "maximum" not in v or v["maximum"] is None:
+                    v["nominal"] = v["minimum"]
+                elif "minimum" not in v or v["minimum"] is None:
+                    v["nominal"] = v["maximum"]
+                else:
+                    v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
+        else:
+            dimensions[k] = {"nominal": v}
+    return {k: v["nominal"] * scale_factor for k, v in dimensions.items() if k != 'alpha'}
+
+
+class BuilderBase:
+    """Shared base for FreeCADBuilder and CadQueryBuilder with common factory/families logic."""
+
+    def factory(self, data):
+        family = ShapeFamily[data['family'].upper().replace(" ", "_")]
+        return self.shapers[family]
+
+    def get_families(self):
+        return {
+            shaper.name.lower()
+            .replace("_", " "): self.factory({'family': shaper.name})
+            .get_dimensions_and_subtypes()
+            for shaper in self.shapers
+        }
+
+
 def decimal_ceil(a, precision=0):
     return numpy.true_divide(numpy.ceil(a * 10**precision), 10**precision)
 
