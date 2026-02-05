@@ -32,11 +32,10 @@ def flatten_dimensions(data):
 
 class Builder:
     """
-    Class for calculating the different areas and length of every shape according to EN 60205.
-    Each shape will create a daughter of this class and define their own equations
+    Class for building 3D models of magnetic components.
     """
 
-    def __init__(self, engine="FreeCAD"):
+    def __init__(self, engine="CadQuery"):
         if engine == "FreeCAD":
             import freecad_builder
             self.engine = freecad_builder.FreeCADBuilder()
@@ -58,11 +57,41 @@ class Builder:
     def get_spacer(self, geometrical_data):
         return self.engine.get_spacer(geometrical_data)
 
-    def get_core(self, project_name, geometrical_description, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
+    def get_core(self, project_name, geometrical_description, output_path=None, save_files=True, export_files=True):
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
         return self.engine.get_core(project_name, geometrical_description, output_path, save_files, export_files)
 
-    def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
+    def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=None, save_files=True, export_files=True):
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
         return self.engine.get_core_gapping_technical_drawing(project_name, core_data, colors, output_path, save_files, export_files)
+
+    def get_magnetic(self, magnetic_data, project_name="Magnetic", output_path=None, export_files=True):
+        """Create a complete 3D magnetic component from MAS data.
+        
+        Parameters
+        ----------
+        magnetic_data : dict
+            MAS magnetic description dictionary containing core, coil, etc.
+            Can be either a complete MAS file (with 'magnetic' key) or just the magnetic data.
+        project_name : str
+            Name for the output files.
+        output_path : str
+            Path to save output files.
+        export_files : bool
+            If True, export STEP and STL files.
+            
+        Returns
+        -------
+        Tuple of (step_path, stl_path) or list of pieces if export_files is False.
+        """
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+        # Handle both full MAS format and just magnetic data
+        if 'magnetic' in magnetic_data:
+            magnetic_data = magnetic_data['magnetic']
+        return self.engine.get_magnetic(magnetic_data, project_name, output_path, export_files)
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -71,8 +100,5 @@ if __name__ == '__main__':  # pragma: no cover
         for ndjson_line in f.readlines():
             data = json.loads(ndjson_line)
             if data["name"] == "PQ 40/40":
-            # if data["family"] in ['pm']:
-            # if data["family"] not in ['ui']:
                 core = Builder().factory(data)
                 core.get_core(data, None)
-                # break
