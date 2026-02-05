@@ -1317,6 +1317,10 @@ class CadQueryBuilder(utils.BuilderBase):
             except:  # noqa: E722
                 return (None, None) if export_files else None
 
+        def get_piece_technical_drawing(self, data, colors=None, save_files=False):
+            """Technical drawings are not supported by the CadQuery engine."""
+            return {"top_view": None, "front_view": None}
+
         def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files, piece):
             raise NotImplementedError
 
@@ -2730,10 +2734,13 @@ class CadQueryBuilder(utils.BuilderBase):
                     .translate(translate)
                 )
 
-                translate = (winding_column_width / 2 - dimensions["S"] / 4, 0, dimensions["B"] / 2)
+                # Extend rectangular hole slightly past column surface to avoid
+                # tangent-surface boolean failures in OCC kernel
+                eps = 1e-5
+                translate = (winding_column_width / 2 - dimensions["S"] / 4 + eps / 2, 0, dimensions["B"] / 2)
                 lateral_hole_rectangular_right = (
                     cq.Workplane()
-                    .box(dimensions["S"] / 2, dimensions["S"], dimensions["B"])
+                    .box(dimensions["S"] / 2 + eps, dimensions["S"], dimensions["B"])
                     .tag("lateral_hole_rectangular_right")
                     .translate(translate)
                 )
