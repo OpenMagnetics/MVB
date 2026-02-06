@@ -106,26 +106,19 @@ class Tests(unittest.TestCase):
                         # continue
 
                     core = copy.deepcopy(dummyCore)
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['type'] = "toroidal"
-                    if data['family'] in ['ut']:
-                        core['functionalDescription']['type'] = "closed shape"
                     core['functionalDescription']['shape'] = data
 
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['gapping'] = []
-                    else:
-                        gapping = []
-                        core_datum = PyMKF.calculate_core_data(core, False)
-                        for column_index, column in enumerate(core_datum['processedDescription']['columns']):
-                            aux = copy.deepcopy(dummyGapping[column_index])
-                            aux['coordinates'] = column['coordinates']
-                            gapping.append(aux)
-
-                        core['functionalDescription']['gapping'] = gapping
+                    gapping = []
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
-                    print(core)
+                    for column_index, column in enumerate(core_datum['processedDescription']['columns']):
+                        aux = copy.deepcopy(dummyGapping[column_index])
+                        aux['coordinates'] = column['coordinates']
+                        gapping.append(aux)
+
+                    core['functionalDescription']['gapping'] = gapping
+                    core_datum = PyMKF.calculate_core_data(core, False)
+                    result = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
+                    print(result)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
@@ -170,18 +163,11 @@ class Tests(unittest.TestCase):
                 if data["family"] not in ['ui', 'ut', 'pqi']:
 
                     core = copy.deepcopy(dummyCore)
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['type'] = "toroidal"
-                    if data['family'] in ['ut']:
-                        core['functionalDescription']['type'] = "closed shape"
                     core['functionalDescription']['shape'] = data
 
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['gapping'] = []
-
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
-                    print(core)
+                    result = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
+                    print(result)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
@@ -218,30 +204,23 @@ class Tests(unittest.TestCase):
                 if data["family"] not in ['ui', 'ut', 'pqi']:
 
                     core = copy.deepcopy(dummyCore)
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['type'] = "toroidal"
-                    if data['family'] in ['ut']:
-                        core['functionalDescription']['type'] = "closed shape"
                     core['functionalDescription']['shape'] = data
 
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['gapping'] = []
-                    else:
-                        gapping = []
-                        core_datum = PyMKF.calculate_core_data(core, False)
-                        core_datum['processedDescription'] = PyMKF.calculate_core_processed_description(core)
-                        for column_index, column in enumerate(core_datum['processedDescription']['columns']):
-                            aux = copy.deepcopy(dummyGapping[column_index])
-                            aux['coordinates'] = column['coordinates']
-                            gapping.append(aux)
-                        core['functionalDescription']['gapping'] = gapping
+                    gapping = []
+                    core_datum = PyMKF.calculate_core_data(core, False)
+                    core_datum['processedDescription'] = PyMKF.calculate_core_processed_description(core)
+                    for column_index, column in enumerate(core_datum['processedDescription']['columns']):
+                        aux = copy.deepcopy(dummyGapping[column_index])
+                        aux['coordinates'] = column['coordinates']
+                        gapping.append(aux)
+                    core['functionalDescription']['gapping'] = gapping
 
                     core_datum = PyMKF.calculate_core_data(core, False)
                     # import pprint
                     # pprint.pprint(core_datum['processedDescription'])
                     # pprint.pprint(core_datum['geometricalDescription'])
-                    core = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
-                    print(core)
+                    result = builder.Builder("CadQuery").get_core(data['name'], core_datum['geometricalDescription'])
+                    print(result)
                     filename = f"{data['name']}_core".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.step"))
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}.obj") or os.path.exists(f"{self.output_path}/{filename}.stl"))
@@ -277,26 +256,19 @@ class Tests(unittest.TestCase):
                 data = json.loads(ndjson_line)
                 if data["family"] not in ['ui', 'ut', 'pqi', 't']:
                     core = copy.deepcopy(dummyCore)
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['type'] = "toroidal"
-                    if data['family'] in ['ut']:
-                        core['functionalDescription']['type'] = "closed shape"
                     core['functionalDescription']['shape'] = data
 
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['gapping'] = []
-                    else:
-                        gapping = []
-                        core_datum = PyMKF.calculate_core_data(core, False)
-                        for column_index, column in enumerate(core_datum['processedDescription']['columns']):
-                            aux = copy.deepcopy(dummyGapping[column_index])
-                            aux['coordinates'] = column['coordinates']
-                            gapping.append(aux)
-                        core['functionalDescription']['gapping'] = gapping
+                    gapping = []
+                    core_datum = PyMKF.calculate_core_data(core, False)
+                    for column_index, column in enumerate(core_datum['processedDescription']['columns']):
+                        aux = copy.deepcopy(dummyGapping[column_index])
+                        aux['coordinates'] = column['coordinates']
+                        gapping.append(aux)
+                    core['functionalDescription']['gapping'] = gapping
 
                     print(data["name"])
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
+                    builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -334,25 +306,18 @@ class Tests(unittest.TestCase):
                 if data["family"] not in ['ui', 'ut', 'pqi']:
 
                     core = copy.deepcopy(dummyCore)
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['type'] = "toroidal"
-                    if data['family'] in ['ut']:
-                        core['functionalDescription']['type'] = "closed shape"
                     core['functionalDescription']['shape'] = data
 
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['gapping'] = []
-                    else:
-                        gapping = []
-                        core_datum = PyMKF.calculate_core_data(core, False)
-                        for column_index, column in enumerate(core_datum['processedDescription']['columns']):
-                            aux = copy.deepcopy(dummyGapping[column_index])
-                            aux['coordinates'] = column['coordinates']
-                            gapping.append(aux)
-                        core['functionalDescription']['gapping'] = gapping
+                    gapping = []
+                    core_datum = PyMKF.calculate_core_data(core, False)
+                    for column_index, column in enumerate(core_datum['processedDescription']['columns']):
+                        aux = copy.deepcopy(dummyGapping[column_index])
+                        aux['coordinates'] = column['coordinates']
+                        gapping.append(aux)
+                    core['functionalDescription']['gapping'] = gapping
 
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
+                    builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -399,17 +364,10 @@ class Tests(unittest.TestCase):
                 # if data["family"] in ['p']:
                     print(data["name"])
                     core = copy.deepcopy(dummyCore)
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['type'] = "toroidal"
-                    if data['family'] in ['ut']:
-                        core['functionalDescription']['type'] = "closed shape"
                     core['functionalDescription']['shape'] = data
 
-                    if data['family'] in ['t']:
-                        core['functionalDescription']['gapping'] = []
-
                     core_datum = PyMKF.calculate_core_data(core, False)
-                    core = builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
+                    builder.Builder("CadQuery").get_core_gapping_technical_drawing(data['name'], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
                     # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
@@ -534,7 +492,7 @@ class Tests(unittest.TestCase):
                                                                       'height': 0.019,
                                                                       'radialHeight': None,
                                                                       'width': 0.0095}]}}
-        core = builder.Builder("CadQuery").get_core(core['functionalDescription']['shape']['name'], core['geometricalDescription'])
+        builder.Builder("CadQuery").get_core(core['functionalDescription']['shape']['name'], core['geometricalDescription'])
 
         # filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
         # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")

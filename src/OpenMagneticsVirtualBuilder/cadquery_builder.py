@@ -3257,7 +3257,6 @@ class CadQueryBuilder(utils.BuilderBase):
                 wall_thickness = processed.get("wallThickness", dims.get("wallThickness", 0.0005))
                 column_shape = processed.get("columnShape", "rectangular")
                 column_width = processed.get("columnWidth", 0)
-                column_depth = processed.get("columnDepth", column_width)
                 column_thickness = processed.get("columnThickness", wall_thickness)
                 bobbin_ww = processed.get("windingWindows", [{}])[0] if processed.get("windingWindows") else {}
                 ww_width = bobbin_ww.get("width", winding_window.get("width", 0))
@@ -3268,7 +3267,6 @@ class CadQueryBuilder(utils.BuilderBase):
                 ww_height = winding_window.get("height", 0)
                 column_shape = winding_window.get("columnShape", "rectangular")
                 column_width = winding_window.get("columnWidth", 0)
-                column_depth = winding_window.get("columnDepth", column_width)
                 column_thickness = wall_thickness
 
             tube_height = ww_height
@@ -3523,7 +3521,6 @@ class CadQueryBuilder(utils.BuilderBase):
         def get_bulk_winding(self, data, bobbin_dims):
             wire_diameter = data.get("wireDiameter", 0.0005)
             insulation = data.get("insulationThickness", 0.00005)
-            num_turns = data.get("numberOfTurns", 1)
             num_layers = data.get("numberOfLayers", 1)
             total_wire_diameter = wire_diameter + 2 * insulation
 

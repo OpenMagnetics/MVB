@@ -35,8 +35,7 @@ class TestMagneticAssembly(unittest.TestCase):
                     if data["name"] == "ETD 49/25/16":
                         return data
         except FileNotFoundError:
-            pass
-        return None
+            return None  # MAS data file not available
 
     def get_pq_core_data(self):
         """Helper to get PQ core data from MAS"""
@@ -49,8 +48,7 @@ class TestMagneticAssembly(unittest.TestCase):
                     if data["name"] == "PQ 40/40":
                         return data
         except FileNotFoundError:
-            pass
-        return None
+            return None  # MAS data file not available
 
     def get_simple_e_core_data(self):
         """Helper to create a simple E core data without MAS dependency"""

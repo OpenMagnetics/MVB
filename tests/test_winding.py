@@ -1,6 +1,5 @@
 import unittest
 import os
-import glob
 import json
 
 import context  # noqa: F401

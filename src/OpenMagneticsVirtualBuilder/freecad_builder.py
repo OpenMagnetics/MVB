@@ -430,7 +430,6 @@ class FreeCADBuilder(utils.BuilderBase):
                     break
     
                 elif piece['type'] == "toroidal":
-                    dimensions = flatten_dimensions(piece['shape'])
                     center_offset = 0
                     break
     
@@ -494,20 +493,7 @@ class FreeCADBuilder(utils.BuilderBase):
                                                          dimension_label=dimension_label,
                                                          label_offset=min(base_width / 2, horizontal_offset),
                                                          label_alignment=(-gap['coordinates'][1] - gap['length'] / 2 - chunk_size / 2) * scale * 1000)
-    
-                    if len(gaps_per_column) > 1 and gap_index < len(gaps_per_column) - 1:
-                        next_gap = gaps_per_column[gap_index + 1]
-                        chunk_size = (-gap['length'] / 2 - gap['coordinates'][1]) - (next_gap['length'] / 2 - next_gap['coordinates'][1])
-                        dimension_label = f"{round(chunk_size * 1000, 2)}"
-                        if chunk_size * 1000 * scale > 70:
-                            dimension_label += " mm"
-                        svgFile_data += create_dimension(ending_coordinates=[((gap['coordinates'][0] + gap['sectionDimensions'][0] / 2) * 1000 + center_offset) * scale, (-gap['length'] / 2 - gap['coordinates'][1]) * scale * 1000],
-                                                         starting_coordinates=[((gap['coordinates'][0] + gap['sectionDimensions'][0] / 2) * 1000 + center_offset) * scale, (next_gap['length'] / 2 - next_gap['coordinates'][1]) * scale * 1000],
-                                                         dimension_type="DistanceY",
-                                                         dimension_label=dimension_label,
-                                                         label_offset=min(base_width / 2, horizontal_offset),
-                                                         label_alignment=(-gap['coordinates'][1] - gap['length'] / 2 - chunk_size / 2) * scale * 1000)
-    
+
                     if len(gaps_per_column) > 1 and gap_index == 0:
                         chunk_size = column_semi_height - (gap['length'] / 2 - gap['coordinates'][1])
                         dimension_label = f"{round(chunk_size * 1000, 2)}"

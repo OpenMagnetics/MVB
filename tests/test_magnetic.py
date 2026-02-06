@@ -272,7 +272,7 @@ class TestConcentric(TestMagnetic):
 class TestFullMagnetic(TestMagnetic):
     """Tests for complete magnetic assemblies from real MAS design files."""
 
-    def test_etd49_round_wire_5_turns(self):
+    def test_etd49_round_wire_6_turns(self):
         """Test ETD49 core with 6 round wire turns and bobbin."""
         step_path, stl_path, solid_info = self._run_test(
             'ETD49_N87_10uH_5T.json', validate_geometry=True
