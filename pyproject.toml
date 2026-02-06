@@ -37,3 +37,34 @@ packages = ["src/OpenMagneticsVirtualBuilder"]
 Homepage = "https://openmagnetics.com"
 Repository = "https://github.com/OpenMagnetics/MVB"
 Contact = "https://www.linkedin.com/in/alfonso-martinez-de-la-torre/"
+
+[tool.ruff]
+target-version = "py38"
+line-length = 200
+
+[tool.ruff.lint]
+select = [
+    "F",     # Pyflakes: unused imports, undefined names, unused variables
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "B",     # flake8-bugbear: common bugs and design problems
+    "SIM",   # flake8-simplify: simplifiable code
+    "UP",    # pyupgrade: deprecated syntax
+]
+ignore = [
+    "E501",  # line too long (handled by line-length setting)
+    "E722",  # bare except (used intentionally in builder code)
+    "F841",  # local variable assigned but never used (caught by vulture)
+    "B007",  # unused loop variable
+    "B008",  # function call in argument defaults (intentional for output_path defaults)
+    "SIM108", # ternary operator (readability preference)
+    "UP015", # unnecessary open mode
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["E402"]  # module-level import not at top (context.py path setup)
+"src/OpenMagneticsVirtualBuilder/freecad_builder.py" = ["E402"]  # conditional FreeCAD imports
+
+[tool.vulture]
+min_confidence = 80
+paths = ["src/OpenMagneticsVirtualBuilder/", "tests/"]

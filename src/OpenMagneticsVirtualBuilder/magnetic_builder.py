@@ -20,18 +20,6 @@ The hierarchical structure is:
 from cadquery_builder import (
     # Main builder class
     CadQueryBuilder,
-
-    # Data classes
-    ColumnShape,
-    WireType,
-    BobbinProcessedDescription,
-    WireDescription,
-    TurnDescription,
-
-    # Helper functions
-    convert_axis,
-    resolve_dimensional_value,
-    flatten_dimensions,
 )
 
 # Aliases for backward compatibility with old class names
@@ -40,28 +28,23 @@ CadQueryCoilBuilder = CadQueryBuilder
 CadQueryMagneticBuilder = CadQueryBuilder
 
 
-if __name__ == '__main__':
-    import os
-    
+if __name__ == "__main__":
     # Example usage
     test_bobbin = {
-        'processedDescription': {
-            'columnDepth': 0.005,
-            'columnWidth': 0.005,
-            'columnThickness': 0.001,
-            'wallThickness': 0.001,
-            'columnShape': 'rectangular',
-            'windingWindows': [{
-                'height': 0.01,
-                'width': 0.003
-            }]
+        "processedDescription": {
+            "columnDepth": 0.005,
+            "columnWidth": 0.005,
+            "columnThickness": 0.001,
+            "wallThickness": 0.001,
+            "columnShape": "rectangular",
+            "windingWindows": [{"height": 0.01, "width": 0.003}],
         }
     }
-    
+
     builder = CadQueryBuilder()
     result = builder.get_bobbin(test_bobbin, "test_bobbin", export_files=True)
-    
-    if result['files']:
+
+    if result["files"]:
         print(f"Bobbin exported to: {result['files']}")
     else:
         print("No bobbin generated (zero thickness)")

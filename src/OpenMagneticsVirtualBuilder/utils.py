@@ -48,23 +48,18 @@ def flatten_dimensions(data, scale_factor=1.0):
                     v["nominal"] = round((v["maximum"] + v["minimum"]) / 2, 6)
         else:
             dimensions[k] = {"nominal": v}
-    return {k: v["nominal"] * scale_factor for k, v in dimensions.items() if k != 'alpha'}
+    return {k: v["nominal"] * scale_factor for k, v in dimensions.items() if k != "alpha"}
 
 
 class BuilderBase:
     """Shared base for FreeCADBuilder and CadQueryBuilder with common factory/families logic."""
 
     def factory(self, data):
-        family = ShapeFamily[data['family'].upper().replace(" ", "_")]
+        family = ShapeFamily[data["family"].upper().replace(" ", "_")]
         return self.shapers[family]
 
     def get_families(self):
-        return {
-            shaper.name.lower()
-            .replace("_", " "): self.factory({'family': shaper.name})
-            .get_dimensions_and_subtypes()
-            for shaper in self.shapers
-        }
+        return {shaper.name.lower().replace("_", " "): self.factory({"family": shaper.name}).get_dimensions_and_subtypes() for shaper in self.shapers}
 
 
 def decimal_ceil(a, precision=0):
