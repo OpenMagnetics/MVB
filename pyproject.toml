@@ -28,6 +28,7 @@ dependencies = [
   "cadquery",
   "numpy",
   "PyMKF",
+  "ezdxf",
 ]
 
 [tool.hatch.build.targets.wheel]

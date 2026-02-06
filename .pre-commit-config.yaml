@@ -12,3 +12,12 @@ repos:
     hooks:
       - id: vulture
         args: [src/OpenMagneticsVirtualBuilder/, tests/, --min-confidence=80]
+
+  - repo: local
+    hooks:
+      - id: fast-tests
+        name: fast tests (inline data only)
+        entry: python3 -m pytest tests/test_2d_drawings.py -x -q --ignore-glob="*ndjson*" -k "not AllShapes2DWithNdjson"
+        language: system
+        pass_filenames: false
+        always_run: true

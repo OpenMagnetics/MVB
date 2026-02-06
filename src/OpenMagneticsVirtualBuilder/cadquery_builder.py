@@ -503,6 +503,509 @@ class CadQueryBuilder(utils.BuilderBase):
         except Exception:
             return None
 
+    def _build_core_pieces(self, geometrical_description):
+        """Build core pieces from geometrical description, returning unscaled pieces and shape info."""
+        pieces = []
+        family = None
+        dims = None
+        original_dims = None
+
+        for index, geometrical_part in enumerate(geometrical_description):
+            if geometrical_part["type"] == "spacer":
+                spacer = self.get_spacer(geometrical_part)
+                pieces.append(spacer)
+            elif geometrical_part["type"] in ["half set", "toroidal"]:
+                shape_data = geometrical_part["shape"]
+                part_builder = CadQueryBuilder().factory(shape_data)
+
+                if family is None:
+                    family = shape_data.get("family", "e")
+                    dims = flatten_dimensions(copy.deepcopy(shape_data))
+                    original_dims = utils.flatten_dimensions(copy.deepcopy(shape_data), scale_factor=1.0)
+
+                piece = part_builder.get_piece(data=copy.deepcopy(shape_data), name=f"Piece_{index}", save_files=False, export_files=False)
+                if piece is None:
+                    continue
+
+                piece = piece.rotate((1, 0, 0), (-1, 0, 0), geometrical_part["rotation"][0] / math.pi * 180)
+                piece = piece.rotate((0, 1, 0), (0, -1, 0), geometrical_part["rotation"][2] / math.pi * 180)
+                piece = piece.rotate((0, 0, 1), (0, 0, -1), geometrical_part["rotation"][1] / math.pi * 180)
+
+                if "machining" in geometrical_part and geometrical_part["machining"] is not None:
+                    for machining in geometrical_part["machining"]:
+                        piece = part_builder.apply_machining(piece=piece, machining=machining, dimensions=flatten_dimensions(shape_data))
+
+                piece = piece.translate(convert_axis(geometrical_part["coordinates"]))
+                pieces.append(piece)
+
+        return pieces, family, dims, original_dims
+
+    def _make_compound(self, pieces):
+        """Create a scaled compound from a list of CadQuery workplane pieces."""
+        scaled = []
+        for piece in pieces:
+            for o in piece.objects:
+                scaled.append(o.scale(1000))
+        return cq.Compound.makeCompound(scaled)
+
+    def _generate_views(self, compound, family, dims, original_dims, planes, view_types, colors, slice_offsets=None):
+        """Generate DrawingView objects for given planes and view types.
+
+        Args:
+            compound: CadQuery Compound (scaled to mm).
+            family: Shape family string.
+            dims: Processed dimensions dict.
+            original_dims: Original dimensions dict for labels.
+            planes: List of ViewPlane values.
+            view_types: List of ViewType values.
+            colors: Color config dict.
+            slice_offsets: Optional dict overriding per-plane slice offsets.
+
+        Returns:
+            Dict of {key: DrawingView} where key is e.g. 'xy_projection'.
+        """
+        import drawing_2d
+        from drawing_2d import ViewType, DrawingView
+
+        views = {}
+        for plane in planes:
+            for vtype in view_types:
+                key = f"{plane.value}_{vtype.value}"
+
+                if vtype == ViewType.PROJECTION:
+                    shape = compound
+                else:
+                    offset = 0.0
+                    if slice_offsets and plane.value in slice_offsets:
+                        offset = slice_offsets[plane.value]
+                    elif family:
+                        offsets = shape_configs.CROSS_SECTION_OFFSETS.get(family.lower(), {})
+                        offset = offsets.get(plane.value, 0.0)
+                    shape = drawing_2d.cross_section_at_plane(compound, plane, offset)
+                    if shape is None:
+                        continue
+
+                views[key] = DrawingView(
+                    plane=plane,
+                    view_type=vtype,
+                    shape=shape,
+                    dimensions=[],
+                    title=f"{family}_{key}" if family else key,
+                )
+
+        return views
+
+    def get_svg_drawings(self, project_name, geometrical_description, planes=None, view_types=None, colors=None, output_path=None, save_files=True, slice_offsets=None):
+        """Generate annotated SVG drawings for a core shape.
+
+        Args:
+            project_name: Name for output files.
+            geometrical_description: List of geometrical part descriptions.
+            planes: List of ViewPlane values (default: all three).
+            view_types: List of ViewType values (default: PROJECTION only).
+            colors: Dict with 'projection_color' and 'dimension_color'.
+            output_path: Directory for output files.
+            save_files: Whether to write SVG files to disk.
+            slice_offsets: Optional dict overriding per-plane slice offsets.
+
+        Returns:
+            Dict of {key: svg_string} where key is e.g. 'xy_projection'.
+        """
+        try:
+            import drawing_2d
+            from drawing_2d import ViewPlane, ViewType
+            from cadquery.occ_impl.exporters.svg import getSVG
+
+            if planes is None:
+                planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
+            if view_types is None:
+                view_types = [ViewType.PROJECTION]
+            if colors is None:
+                colors = {"projection_color": "#000000", "dimension_color": "#000000"}
+            if output_path is None:
+                output_path = f"{os.path.dirname(os.path.abspath(__file__))}/../../output/"
+
+            os.makedirs(output_path, exist_ok=True)
+            safe_name = project_name.replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            pieces, family, dims, original_dims = self._build_core_pieces(geometrical_description)
+            if not pieces:
+                return {}
+
+            compound = self._make_compound(pieces)
+
+            views = self._generate_views(compound, family, dims, original_dims, planes, view_types, colors, slice_offsets)
+
+            stroke_color = self.IPiece._hex_to_rgb(colors.get("projection_color", "#000000"))
+            results = {}
+            for key, view in views.items():
+                proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
+                svg_opts = {
+                    "width": 800,
+                    "height": 600,
+                    "strokeWidth": 0.5,
+                    "strokeColor": stroke_color,
+                    "showHidden": False,
+                    "projectionDir": proj_dir,
+                }
+
+                if hasattr(view.shape, "wrapped"):
+                    base_svg = getSVG(view.shape, svg_opts)
+                elif hasattr(view.shape, "val"):
+                    base_svg = getSVG(view.shape.val(), svg_opts)
+                else:
+                    base_svg = getSVG(view.shape, svg_opts)
+
+                svg = base_svg
+
+                if save_files:
+                    svg_path = f"{output_path}/{safe_name}_{key}.svg"
+                    with open(svg_path, "w", encoding="utf-8") as f:
+                        f.write(svg)
+
+                results[key] = svg
+
+            return results
+
+        except Exception:
+            return {}
+
+    def get_dxf_drawings(self, project_name, geometrical_description, planes=None, view_types=None, colors=None, output_path=None, slice_offsets=None):
+        """Generate DXF drawings for a core shape.
+
+        Returns:
+            Dict of {key: filepath} where key is e.g. 'xy_projection'.
+        """
+        try:
+            import drawing_2d
+            from drawing_2d import ViewPlane, ViewType
+
+            if planes is None:
+                planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
+            if view_types is None:
+                view_types = [ViewType.PROJECTION]
+            if colors is None:
+                colors = {"projection_color": "#000000", "dimension_color": "#000000"}
+            if output_path is None:
+                output_path = f"{os.path.dirname(os.path.abspath(__file__))}/../../output/"
+
+            os.makedirs(output_path, exist_ok=True)
+            safe_name = project_name.replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            pieces, family, dims, original_dims = self._build_core_pieces(geometrical_description)
+            if not pieces:
+                return {}
+
+            compound = self._make_compound(pieces)
+
+            views = self._generate_views(compound, family, dims, original_dims, planes, view_types, colors, slice_offsets)
+
+            results = {}
+            for key, view in views.items():
+                filepath = drawing_2d.export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type, colors=colors)
+                if filepath:
+                    results[key] = filepath
+
+            return results
+
+        except Exception:
+            return {}
+
+    def get_fcstd_sketches(self, project_name, geometrical_description, planes=None, view_types=None, output_path=None, slice_offsets=None):
+        """Generate FreeCAD macro files (.FCMacro) for a core shape.
+
+        Returns:
+            Dict of {key: filepath} where key is e.g. 'xy_projection'.
+        """
+        try:
+            import drawing_2d
+            from drawing_2d import ViewPlane, ViewType
+
+            if planes is None:
+                planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
+            if view_types is None:
+                view_types = [ViewType.PROJECTION]
+            if output_path is None:
+                output_path = f"{os.path.dirname(os.path.abspath(__file__))}/../../output/"
+
+            os.makedirs(output_path, exist_ok=True)
+            safe_name = project_name.replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            pieces, family, dims, original_dims = self._build_core_pieces(geometrical_description)
+            if not pieces:
+                return {}
+
+            compound = self._make_compound(pieces)
+
+            colors = {"projection_color": "#000000", "dimension_color": "#000000"}
+            views = self._generate_views(compound, family, dims, original_dims, planes, view_types, colors, slice_offsets)
+
+            results = {}
+            for key, view in views.items():
+                filepath = drawing_2d.export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type)
+                if filepath:
+                    results[key] = filepath
+
+            return results
+
+        except Exception:
+            return {}
+
+    def get_assembly_svg_drawings(self, project_name, magnetic_data, planes=None, view_types=None, colors=None, output_path=None, save_files=True, slice_offsets=None, components=None):
+        """Generate annotated SVG drawings for an assembly or individual components.
+
+        Args:
+            project_name: Name for output files.
+            magnetic_data: MAS magnetic data dict.
+            planes: List of ViewPlane values.
+            view_types: List of ViewType values.
+            colors: Color config dict.
+            output_path: Directory for output files.
+            save_files: Whether to write SVG files to disk.
+            slice_offsets: Optional per-plane slice offsets.
+            components: List of components to draw: 'assembly', 'core', 'bobbin', 'winding'.
+                       Default is ['assembly'].
+
+        Returns:
+            Dict of {component_key: svg_string}.
+        """
+        try:
+            import drawing_2d
+            from drawing_2d import ViewPlane, ViewType
+            from cadquery.occ_impl.exporters.svg import getSVG
+
+            if planes is None:
+                planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
+            if view_types is None:
+                view_types = [ViewType.PROJECTION]
+            if colors is None:
+                colors = {"projection_color": "#000000", "dimension_color": "#000000"}
+            if output_path is None:
+                output_path = f"{os.path.dirname(os.path.abspath(__file__))}/../../output/"
+            if components is None:
+                components = ["assembly"]
+
+            if "magnetic" in magnetic_data:
+                magnetic_data = magnetic_data["magnetic"]
+
+            os.makedirs(output_path, exist_ok=True)
+            safe_name = project_name.replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            # Build all pieces using get_magnetic logic
+            all_pieces = self.get_magnetic(magnetic_data, project_name, output_path, export_files=False)
+            if all_pieces is None or (isinstance(all_pieces, tuple) and all_pieces[0] is None):
+                return {}
+
+            if not isinstance(all_pieces, list):
+                return {}
+
+            # For assembly, use all pieces
+            compound_map = {}
+            if "assembly" in components:
+                compound_map["assembly"] = self._make_compound(all_pieces)
+
+            # For core-only views, rebuild just core pieces
+            core_data = magnetic_data.get("core", {})
+            geo_desc = core_data.get("geometricalDescription", [])
+            if "core" in components and geo_desc:
+                core_pieces, family, dims, original_dims = self._build_core_pieces(geo_desc)
+                if core_pieces:
+                    compound_map["core"] = self._make_compound(core_pieces)
+
+            family = None
+            dims = None
+            original_dims = None
+            if geo_desc:
+                for part in geo_desc:
+                    if part["type"] in ["half set", "toroidal"]:
+                        shape_data = part["shape"]
+                        family = shape_data.get("family", "e")
+                        dims = flatten_dimensions(copy.deepcopy(shape_data))
+                        original_dims = utils.flatten_dimensions(copy.deepcopy(shape_data), scale_factor=1.0)
+                        break
+
+            stroke_color = self.IPiece._hex_to_rgb(colors.get("projection_color", "#000000"))
+            results = {}
+
+            for comp_name, compound in compound_map.items():
+                views = self._generate_views(compound, family, dims, original_dims, planes, view_types, colors, slice_offsets)
+
+                for key, view in views.items():
+                    full_key = f"{comp_name}_{key}"
+                    proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
+                    svg_opts = {
+                        "width": 800,
+                        "height": 600,
+                        "strokeWidth": 0.5,
+                        "strokeColor": stroke_color,
+                        "showHidden": False,
+                        "projectionDir": proj_dir,
+                    }
+
+                    if hasattr(view.shape, "wrapped"):
+                        base_svg = getSVG(view.shape, svg_opts)
+                    elif hasattr(view.shape, "val"):
+                        base_svg = getSVG(view.shape.val(), svg_opts)
+                    else:
+                        base_svg = getSVG(view.shape, svg_opts)
+
+                    svg = base_svg
+
+                    if save_files:
+                        svg_path = f"{output_path}/{safe_name}_{full_key}.svg"
+                        with open(svg_path, "w", encoding="utf-8") as f:
+                            f.write(svg)
+
+                    results[full_key] = svg
+
+            return results
+
+        except Exception:
+            return {}
+
+    def get_assembly_dxf_drawings(self, project_name, magnetic_data, planes=None, view_types=None, colors=None, output_path=None, slice_offsets=None, components=None):
+        """Generate DXF drawings for assembly or individual components.
+
+        Returns:
+            Dict of {component_key: filepath}.
+        """
+        try:
+            import drawing_2d
+            from drawing_2d import ViewPlane, ViewType
+
+            if planes is None:
+                planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
+            if view_types is None:
+                view_types = [ViewType.PROJECTION]
+            if colors is None:
+                colors = {"projection_color": "#000000", "dimension_color": "#000000"}
+            if output_path is None:
+                output_path = f"{os.path.dirname(os.path.abspath(__file__))}/../../output/"
+            if components is None:
+                components = ["assembly"]
+
+            if "magnetic" in magnetic_data:
+                magnetic_data = magnetic_data["magnetic"]
+
+            os.makedirs(output_path, exist_ok=True)
+            safe_name = project_name.replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            all_pieces = self.get_magnetic(magnetic_data, project_name, output_path, export_files=False)
+            if all_pieces is None or (isinstance(all_pieces, tuple) and all_pieces[0] is None):
+                return {}
+
+            if not isinstance(all_pieces, list):
+                return {}
+
+            compound_map = {}
+            if "assembly" in components:
+                compound_map["assembly"] = self._make_compound(all_pieces)
+
+            core_data = magnetic_data.get("core", {})
+            geo_desc = core_data.get("geometricalDescription", [])
+            if "core" in components and geo_desc:
+                core_pieces, _, _, _ = self._build_core_pieces(geo_desc)
+                if core_pieces:
+                    compound_map["core"] = self._make_compound(core_pieces)
+
+            family = None
+            dims = None
+            original_dims = None
+            if geo_desc:
+                for part in geo_desc:
+                    if part["type"] in ["half set", "toroidal"]:
+                        shape_data = part["shape"]
+                        family = shape_data.get("family", "e")
+                        dims = flatten_dimensions(copy.deepcopy(shape_data))
+                        original_dims = utils.flatten_dimensions(copy.deepcopy(shape_data), scale_factor=1.0)
+                        break
+
+            results = {}
+            for comp_name, compound in compound_map.items():
+                views = self._generate_views(compound, family, dims, original_dims, planes, view_types, colors, slice_offsets)
+
+                for key, view in views.items():
+                    full_key = f"{comp_name}_{key}"
+                    filepath = drawing_2d.export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type, colors=colors)
+                    if filepath:
+                        results[full_key] = filepath
+
+            return results
+
+        except Exception:
+            return {}
+
+    def get_assembly_fcstd_sketches(self, project_name, magnetic_data, planes=None, view_types=None, output_path=None, slice_offsets=None, components=None):
+        """Generate FreeCAD macro files for assembly or individual components.
+
+        Returns:
+            Dict of {component_key: filepath}.
+        """
+        try:
+            import drawing_2d
+            from drawing_2d import ViewPlane, ViewType
+
+            if planes is None:
+                planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
+            if view_types is None:
+                view_types = [ViewType.PROJECTION]
+            if output_path is None:
+                output_path = f"{os.path.dirname(os.path.abspath(__file__))}/../../output/"
+            if components is None:
+                components = ["assembly"]
+
+            if "magnetic" in magnetic_data:
+                magnetic_data = magnetic_data["magnetic"]
+
+            os.makedirs(output_path, exist_ok=True)
+            safe_name = project_name.replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            all_pieces = self.get_magnetic(magnetic_data, project_name, output_path, export_files=False)
+            if all_pieces is None or (isinstance(all_pieces, tuple) and all_pieces[0] is None):
+                return {}
+
+            if not isinstance(all_pieces, list):
+                return {}
+
+            compound_map = {}
+            if "assembly" in components:
+                compound_map["assembly"] = self._make_compound(all_pieces)
+
+            core_data = magnetic_data.get("core", {})
+            geo_desc = core_data.get("geometricalDescription", [])
+            if "core" in components and geo_desc:
+                core_pieces, _, _, _ = self._build_core_pieces(geo_desc)
+                if core_pieces:
+                    compound_map["core"] = self._make_compound(core_pieces)
+
+            family = None
+            dims = None
+            original_dims = None
+            if geo_desc:
+                for part in geo_desc:
+                    if part["type"] in ["half set", "toroidal"]:
+                        shape_data = part["shape"]
+                        family = shape_data.get("family", "e")
+                        dims = flatten_dimensions(copy.deepcopy(shape_data))
+                        original_dims = utils.flatten_dimensions(copy.deepcopy(shape_data), scale_factor=1.0)
+                        break
+
+            colors = {"projection_color": "#000000", "dimension_color": "#000000"}
+            results = {}
+            for comp_name, compound in compound_map.items():
+                views = self._generate_views(compound, family, dims, original_dims, planes, view_types, colors, slice_offsets)
+
+                for key, view in views.items():
+                    full_key = f"{comp_name}_{key}"
+                    filepath = drawing_2d.export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type)
+                    if filepath:
+                        results[full_key] = filepath
+
+            return results
+
+        except Exception:
+            return {}
+
     def get_turn(
         self,
         turn_description: TurnDescription,
@@ -1441,12 +1944,16 @@ class CadQueryBuilder(utils.BuilderBase):
                     "showHidden": False,
                 }
 
+                # Top view
                 top_svg = getSVG(scaled_piece.val(), {**svg_opts, "projectionDir": (0, 0, 1)})
+
                 top_path = f"{self.output_path}/{project_name}_TopView.svg"
                 with open(top_path, "w", encoding="utf-8") as f:
                     f.write(top_svg)
 
+                # Front view
                 front_svg = getSVG(scaled_piece.val(), {**svg_opts, "projectionDir": (0, 1, 0)})
+
                 front_path = f"{self.output_path}/{project_name}_FrontView.svg"
                 with open(front_path, "w", encoding="utf-8") as f:
                     f.write(front_svg)
@@ -1456,7 +1963,56 @@ class CadQueryBuilder(utils.BuilderBase):
                 return {"top_view": None, "front_view": None}
 
         def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files, piece):
-            raise NotImplementedError
+            """Generate an SVG view for a piece.
+
+            Args:
+                data: Shape data dict with 'dimensions' and 'family'.
+                original_dimensions: Original dimensions for label values.
+                view: Dict with 'Name' ('TopView'/'FrontView'), 'X', 'Y' keys.
+                project_name: Name for output files.
+                margin: Margin around the drawing.
+                colors: Dict with 'projection_color' and 'dimension_color'.
+                save_files: Whether to write SVG to disk.
+                piece: CadQuery Workplane with the piece geometry.
+
+            Returns:
+                SVG string, or None on failure.
+            """
+            try:
+                from cadquery.occ_impl.exporters.svg import getSVG
+
+                view_name = view["Name"]
+
+                # Determine projection direction based on view
+                if view_name == "TopView":
+                    projection_dir = (0, 0, 1)
+                else:
+                    projection_dir = (0, 1, 0)
+
+                # Scale piece for SVG generation
+                scaled_piece = piece.newObject([o.scale(1000) for o in piece.objects])
+
+                stroke_color = self._hex_to_rgb(colors.get("projection_color", "#000000"))
+                svg_opts = {
+                    "width": 800,
+                    "height": 600,
+                    "strokeWidth": 0.5,
+                    "strokeColor": stroke_color,
+                    "showHidden": False,
+                    "projectionDir": projection_dir,
+                }
+
+                svg_data = getSVG(scaled_piece.val(), svg_opts)
+
+                if save_files:
+                    pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
+                    with open(f"{self.output_path}/{project_name}_{view_name}.svg", "w", encoding="utf-8") as f:
+                        f.write(svg_data)
+
+                return svg_data
+
+            except Exception:
+                return None
 
         @abstractmethod
         def get_shape_base(self, data):
@@ -2709,9 +3265,6 @@ class CadQueryBuilder(utils.BuilderBase):
             machined_piece = piece - gap
 
             return machined_piece
-
-        def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files, piece):
-            raise NotImplementedError
 
     class T(IPiece):
         def get_dimensions_and_subtypes(self):

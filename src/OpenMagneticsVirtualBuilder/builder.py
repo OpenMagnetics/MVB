@@ -83,6 +83,30 @@ class Builder:
             magnetic_data = magnetic_data["magnetic"]
         return self.engine.get_magnetic(magnetic_data, project_name, output_path, export_files)
 
+    def get_svg_drawings(self, project_name, geometrical_description, **kwargs):
+        """Generate annotated SVG drawings for a core shape."""
+        return self.engine.get_svg_drawings(project_name, geometrical_description, **kwargs)
+
+    def get_dxf_drawings(self, project_name, geometrical_description, **kwargs):
+        """Generate DXF drawings for a core shape."""
+        return self.engine.get_dxf_drawings(project_name, geometrical_description, **kwargs)
+
+    def get_fcstd_sketches(self, project_name, geometrical_description, **kwargs):
+        """Generate FreeCAD macro files for a core shape."""
+        return self.engine.get_fcstd_sketches(project_name, geometrical_description, **kwargs)
+
+    def get_assembly_svg_drawings(self, project_name, magnetic_data, **kwargs):
+        """Generate annotated SVG drawings for assembly or individual components."""
+        return self.engine.get_assembly_svg_drawings(project_name, magnetic_data, **kwargs)
+
+    def get_assembly_dxf_drawings(self, project_name, magnetic_data, **kwargs):
+        """Generate DXF drawings for assembly or individual components."""
+        return self.engine.get_assembly_dxf_drawings(project_name, magnetic_data, **kwargs)
+
+    def get_assembly_fcstd_sketches(self, project_name, magnetic_data, **kwargs):
+        """Generate FreeCAD macro files for assembly or individual components."""
+        return self.engine.get_assembly_fcstd_sketches(project_name, magnetic_data, **kwargs)
+
 
 if __name__ == "__main__":  # pragma: no cover
     with open(f"{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson", "r") as f:
