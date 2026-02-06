@@ -51,6 +51,21 @@ class Builder:
             output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
         return self.engine.get_core_gapping_technical_drawing(project_name, core_data, colors, output_path, save_files, export_files)
 
+    def get_magnetic_assembly(self, project_name, assembly_data, output_path=None, save_files=True, export_files=True):
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+        return self.engine.get_magnetic_assembly(project_name, assembly_data, output_path, save_files, export_files)
+
+    def get_bobbin(self, bobbin_data, winding_window, name="Bobbin", output_path=None, save_files=False, export_files=True):
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+        return self.engine.get_bobbin(bobbin_data, winding_window, name, output_path, save_files, export_files)
+
+    def get_winding(self, winding_data, bobbin_dims, name="Winding", output_path=None, save_files=False, export_files=True):
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+        return self.engine.get_winding(winding_data, bobbin_dims, name, output_path, save_files, export_files)
+
     def get_magnetic(self, magnetic_data, project_name="Magnetic", output_path=None, export_files=True):
         """Create a complete 3D magnetic component from MAS data.
         

@@ -265,6 +265,7 @@ class CadQueryBuilder(utils.BuilderBase):
             utils.ShapeFamily.U: self.U(),
             utils.ShapeFamily.UR: self.Ur(),
             utils.ShapeFamily.T: self.T(),
+            utils.ShapeFamily.UT: self.Ut(),
             utils.ShapeFamily.C: self.C()
         }
 
@@ -342,9 +343,189 @@ class CadQueryBuilder(utils.BuilderBase):
 
         except:  # noqa: E722
             return None, None
-    
+
+    def get_magnetic_assembly(self, project_name, assembly_data, output_path=None, save_files=True, export_files=True):
+        """Build a magnetic assembly from core, bobbin, and winding data.
+
+        Parameters
+        ----------
+        project_name : str
+            Name for the output files.
+        assembly_data : dict
+            Dictionary with optional keys: 'core', 'bobbin', 'windings', 'coil'.
+        output_path : str
+            Directory for output files.
+        save_files : bool
+            Whether to save intermediate files.
+        export_files : bool
+            Whether to export STEP/STL files.
+        """
+        try:
+            from cadquery import exporters
+
+            if output_path is None:
+                output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+
+            os.makedirs(output_path, exist_ok=True)
+            project_name = f"{project_name}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+            pieces = []
+
+            # Build core
+            if "core" in assembly_data and assembly_data["core"].get("geometricalDescription"):
+                geometrical_description = assembly_data["core"]["geometricalDescription"]
+                for index, geometrical_part in enumerate(geometrical_description):
+                    if geometrical_part['type'] == 'spacer':
+                        spacer = self.get_spacer(geometrical_part)
+                        pieces.append(spacer)
+                    elif geometrical_part['type'] in ['half set', 'toroidal']:
+                        shape_data = geometrical_part['shape']
+                        part_builder = CadQueryBuilder().factory(shape_data)
+
+                        piece = part_builder.get_piece(data=copy.deepcopy(shape_data),
+                                                       name=f"Piece_{index}",
+                                                       save_files=False,
+                                                       export_files=False)
+                        if piece is None:
+                            continue
+
+                        piece = piece.rotate((1, 0, 0), (-1, 0, 0), geometrical_part['rotation'][0] / math.pi * 180)
+                        piece = piece.rotate((0, 1, 0), (0, -1, 0), geometrical_part['rotation'][2] / math.pi * 180)
+                        piece = piece.rotate((0, 0, 1), (0, 0, -1), geometrical_part['rotation'][1] / math.pi * 180)
+
+                        if 'machining' in geometrical_part and geometrical_part['machining'] is not None:
+                            for machining in geometrical_part['machining']:
+                                piece = part_builder.apply_machining(piece=piece,
+                                                                     machining=machining,
+                                                                     dimensions=flatten_dimensions(shape_data))
+
+                        piece = piece.translate(convert_axis(geometrical_part['coordinates']))
+
+                        if geometrical_part['type'] in ['half set']:
+                            residual_gap = 5e-6
+                            if geometrical_part['rotation'][0] > 0:
+                                piece = piece.translate((0, 0, residual_gap / 2))
+                            else:
+                                piece = piece.translate((0, 0, -residual_gap / 2))
+
+                        pieces.append(piece)
+
+            if not pieces:
+                return None, None
+
+            if export_files:
+                scaled_pieces = []
+                for piece in pieces:
+                    for o in piece.objects:
+                        scaled_pieces.append(o.scale(1000))
+
+                compound = cq.Compound.makeCompound(scaled_pieces)
+
+                exporters.export(compound, f"{output_path}/{project_name}_assembly.step", "STEP")
+                exporters.export(
+                    compound,
+                    f"{output_path}/{project_name}_assembly.stl",
+                    "STL",
+                    tolerance=TESSELLATION_LINEAR_TOLERANCE,
+                    angularTolerance=get_angular_tolerance()
+                )
+                return f"{output_path}/{project_name}_assembly.step", f"{output_path}/{project_name}_assembly.stl"
+            else:
+                return pieces
+
+        except:  # noqa: E722
+            return None, None
+
+    def get_bobbin(self, bobbin_data, winding_window, name="Bobbin", output_path=None, save_files=False, export_files=True):
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+
+        bobbin_builder = self.StandardBobbin()
+        bobbin_builder.set_output_path(output_path)
+        return bobbin_builder.get_bobbin(bobbin_data, winding_window, name, save_files, export_files)
+
+    def get_winding(self, winding_data, bobbin_dims, name="Winding", output_path=None, save_files=False, export_files=True):
+        if output_path is None:
+            output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+
+        winding_builder = self.RoundWireWinding()
+        winding_builder.set_output_path(output_path)
+        return winding_builder.get_winding(winding_data, bobbin_dims, name, save_files, export_files)
+
     def get_core_gapping_technical_drawing(self, project_name, core_data, colors=None, output_path=f'{os.path.dirname(os.path.abspath(__file__))}/../../output/', save_files=True, export_files=True):
-        raise NotImplementedError
+        try:
+            from cadquery import exporters
+            from cadquery.occ_impl.exporters.svg import getSVG
+
+            svg_project_name = f"{project_name}_core_gaps_FrontView".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+            geometrical_description = core_data['geometricalDescription']
+
+            os.makedirs(output_path, exist_ok=True)
+
+            if colors is None:
+                colors = {
+                    "projection_color": "#000000",
+                    "dimension_color": "#000000"
+                }
+
+            pieces_to_export = []
+            for index, geometrical_part in enumerate(geometrical_description):
+                if geometrical_part['type'] == 'spacer':
+                    spacer = self.get_spacer(geometrical_part)
+                    pieces_to_export.append(spacer)
+                elif geometrical_part['type'] in ['half set', 'toroidal']:
+                    shape_data = geometrical_part['shape']
+                    part_builder = CadQueryBuilder().factory(shape_data)
+
+                    piece = part_builder.get_piece(data=copy.deepcopy(shape_data),
+                                                   name=f"Piece_{index}",
+                                                   save_files=False,
+                                                   export_files=False)
+                    if piece is None:
+                        continue
+
+                    piece = piece.rotate((1, 0, 0), (-1, 0, 0), geometrical_part['rotation'][0] / math.pi * 180)
+                    piece = piece.rotate((0, 1, 0), (0, -1, 0), geometrical_part['rotation'][2] / math.pi * 180)
+                    piece = piece.rotate((0, 0, 1), (0, 0, -1), geometrical_part['rotation'][1] / math.pi * 180)
+
+                    if 'machining' in geometrical_part and geometrical_part['machining'] is not None:
+                        for machining in geometrical_part['machining']:
+                            piece = part_builder.apply_machining(piece=piece,
+                                                                 machining=machining,
+                                                                 dimensions=flatten_dimensions(shape_data))
+
+                    piece = piece.translate(convert_axis(geometrical_part['coordinates']))
+                    pieces_to_export.append(piece)
+
+            if not pieces_to_export:
+                return None
+
+            scaled_pieces = []
+            for piece in pieces_to_export:
+                for o in piece.objects:
+                    scaled_pieces.append(o.scale(1000))
+
+            compound = cq.Compound.makeCompound(scaled_pieces)
+
+            stroke_color = self.IPiece._hex_to_rgb(colors.get("projection_color", "#000000"))
+            svg_opts = {
+                "width": 800,
+                "height": 600,
+                "strokeWidth": 0.5,
+                "strokeColor": stroke_color,
+                "showHidden": False,
+                "projectionDir": (0, 1, 0),
+            }
+
+            front_svg = getSVG(compound, svg_opts)
+            svg_path = f"{output_path}/{svg_project_name}.svg"
+            with open(svg_path, "w", encoding="utf-8") as f:
+                f.write(front_svg)
+
+            return front_svg
+
+        except Exception:
+            return None
 
     def get_turn(
         self,
@@ -600,20 +781,17 @@ class CadQueryBuilder(utils.BuilderBase):
         
         return cq.Workplane("XY").add(scaled_shape)
 
-    def get_bobbin(
+    def _build_bobbin_geometry(
         self,
         bobbin_description: BobbinProcessedDescription,
     ) -> Optional[cq.Workplane]:
         """Create bobbin geometry for concentric (E-core, PQ, etc.) magnetics.
-        
-        The bobbin is a tube that wraps around the central column with walls on top/bottom.
-        It's created by subtracting:
-        - The winding window cavity from the outer shell
-        - A central hole through the column
-        
+
+        Internal method used by get_magnetic for MAS-based bobbin creation.
+
         Args:
             bobbin_description: Processed bobbin parameters
-            
+
         Returns:
             CadQuery Workplane with bobbin geometry, or None if bobbin has zero thickness
         """
@@ -1144,7 +1322,7 @@ class CadQueryBuilder(utils.BuilderBase):
         
         # Build bobbin geometry if not toroidal and bobbin has thickness
         if not is_toroidal:
-            bobbin_geom = self.get_bobbin(bobbin_processed)
+            bobbin_geom = self._build_bobbin_geometry(bobbin_processed)
             if bobbin_geom is not None:
                 all_pieces.append(bobbin_geom)
         
@@ -1317,9 +1495,54 @@ class CadQueryBuilder(utils.BuilderBase):
             except:  # noqa: E722
                 return (None, None) if export_files else None
 
+        @staticmethod
+        def _hex_to_rgb(hex_color):
+            """Convert hex color string like '#d4d4d4' to RGB tuple (212, 212, 212)."""
+            hex_color = hex_color.lstrip('#')
+            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
         def get_piece_technical_drawing(self, data, colors=None, save_files=False):
-            """Technical drawings are not supported by the CadQuery engine."""
-            return {"top_view": None, "front_view": None}
+            try:
+                from cadquery.occ_impl.exporters.svg import getSVG
+
+                if colors is None:
+                    colors = {
+                        "projection_color": "#000000",
+                        "dimension_color": "#000000"
+                    }
+
+                project_name = f"{data['name']}_piece_scaled".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+                piece = self.get_piece(data=copy.deepcopy(data), save_files=False, export_files=False)
+                if piece is None:
+                    return {"top_view": None, "front_view": None}
+
+                scaled_piece = piece.newObject([o.scale(1000) for o in piece.objects])
+
+                pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
+
+                stroke_color = self._hex_to_rgb(colors.get("projection_color", "#000000"))
+                svg_opts = {
+                    "width": 800,
+                    "height": 600,
+                    "strokeWidth": 0.5,
+                    "strokeColor": stroke_color,
+                    "showHidden": False,
+                }
+
+                top_svg = getSVG(scaled_piece.val(), {**svg_opts, "projectionDir": (0, 0, 1)})
+                top_path = f"{self.output_path}/{project_name}_TopView.svg"
+                with open(top_path, "w", encoding="utf-8") as f:
+                    f.write(top_svg)
+
+                front_svg = getSVG(scaled_piece.val(), {**svg_opts, "projectionDir": (0, 1, 0)})
+                front_path = f"{self.output_path}/{project_name}_FrontView.svg"
+                with open(front_path, "w", encoding="utf-8") as f:
+                    f.write(front_svg)
+
+                return {"top_view": top_svg, "front_view": front_svg}
+            except Exception:
+                return {"top_view": None, "front_view": None}
 
         def add_dimensions_and_export_view(self, data, original_dimensions, view, project_name, margin, colors, save_files, piece):
             raise NotImplementedError
@@ -2882,6 +3105,67 @@ class CadQueryBuilder(utils.BuilderBase):
             piece = piece.rotate((0, 1, 0), (0, -1, 0), 90)
             return piece
 
+    class Ut(IPiece):
+        def get_dimensions_and_subtypes(self):
+            return {1: ["A", "B", "C", "D", "E", "F"]}
+
+        def get_shape_base(self, data):
+            dimensions = data["dimensions"]
+            a = dimensions["A"] / 2
+            c = dimensions["C"] / 2
+
+            result = (
+                cq.Sketch()
+                .segment((-a, c), (a, c), "top_line")
+                .segment((a, c), (a, -c), "right_line")
+                .segment((a, -c), (-a, -c), "bottom_line")
+                .segment((-a, -c), (-a, c), "left_line")
+
+                .constrain("top_line", "right_line", 'Coincident', None)
+                .constrain("right_line", "bottom_line", 'Coincident', None)
+                .constrain("bottom_line", "left_line", 'Coincident', None)
+                .constrain("left_line", "top_line", 'Coincident', None)
+                .constrain("right_line", 'Orientation', (0, 1))
+                .constrain("left_line", 'Orientation', (0, 1))
+                .constrain("top_line", 'Orientation', (1, 0))
+                .constrain("bottom_line", 'Orientation', (1, 0))
+                .solve()
+                .assemble()
+            )
+
+            return result
+
+        def get_negative_winding_window(self, dimensions):
+            negative_winding_window = (
+                cq.Workplane()
+                .box(dimensions["A"] * 2, dimensions["C"] * 2, dimensions["D"])
+                .tag("negative_winding_window")
+                .translate((0, 0, dimensions["B"] / 2))
+            )
+            return negative_winding_window
+
+        def get_shape_extras(self, data, piece):
+            dimensions = data["dimensions"]
+
+            top_column = (
+                cq.Workplane()
+                .box(dimensions["F"], dimensions["C"], dimensions["D"])
+                .tag("top_column")
+                .translate((-dimensions["A"] / 2 + dimensions["F"] / 2, 0, dimensions["B"] / 2))
+            )
+
+            bottom_column_width = dimensions["A"] - dimensions["E"] - dimensions["F"]
+            bottom_column = (
+                cq.Workplane()
+                .box(bottom_column_width, dimensions["C"], dimensions["D"])
+                .tag("bottom_column")
+                .translate((dimensions["A"] / 2 - bottom_column_width / 2, 0, dimensions["B"] / 2))
+            )
+
+            piece = piece + top_column + bottom_column
+            piece = piece.translate((0, 0, -dimensions["B"]))
+            return piece
+
     class C(U):
         def get_shape_extras(self, data, piece):
             dimensions = data["dimensions"]
@@ -2894,6 +3178,503 @@ class CadQueryBuilder(utils.BuilderBase):
 
             piece = piece.translate((0, 0, -dimensions["B"]))
             return piece
+
+    class IBobbin(metaclass=ABCMeta):
+        def __init__(self):
+            self.output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+
+        def set_output_path(self, output_path):
+            self.output_path = output_path
+
+        @abstractmethod
+        def get_bobbin_body(self, data, winding_window):
+            raise NotImplementedError
+
+        @abstractmethod
+        def get_bobbin_flanges(self, data, winding_window):
+            raise NotImplementedError
+
+        @abstractmethod
+        def get_mounting_pins(self, data, outer_radius):
+            raise NotImplementedError
+
+        def get_bobbin(self, data, winding_window, name="Bobbin", save_files=False, export_files=True):
+            try:
+                project_name = f"{name}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+                dims = data.get("dimensions", {})
+
+                body = self.get_bobbin_body(data, winding_window)
+                flanges = self.get_bobbin_flanges(data, winding_window)
+
+                bobbin = body
+                if flanges is not None:
+                    bobbin = bobbin + flanges
+
+                if dims.get("pinCount", 0) > 0:
+                    ww_width = winding_window.get("width", 0)
+                    ww_height = winding_window.get("height", 0)
+                    flange_extension = dims.get("flangeExtension", 0.002)
+                    if ww_width > ww_height:
+                        outer_radius = ww_width / 2 + dims.get("wallThickness", 0.0005) + flange_extension
+                    else:
+                        outer_radius = ww_height / 2 + dims.get("wallThickness", 0.0005) + flange_extension
+                    pins = self.get_mounting_pins(data, outer_radius)
+                    if pins is not None:
+                        bobbin = bobbin + pins
+
+                coords = data.get("coordinates", [0, 0, 0])
+                rotation = data.get("rotation", [0, 0, 0])
+
+                if rotation[0] != 0:
+                    bobbin = bobbin.rotate((1, 0, 0), (-1, 0, 0), rotation[0] / math.pi * 180)
+                if rotation[1] != 0:
+                    bobbin = bobbin.rotate((0, 1, 0), (0, -1, 0), rotation[1] / math.pi * 180)
+                if rotation[2] != 0:
+                    bobbin = bobbin.rotate((0, 0, 1), (0, 0, -1), rotation[2] / math.pi * 180)
+
+                bobbin = bobbin.translate(convert_axis(coords))
+
+                pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
+
+                if export_files:
+                    from cadquery import exporters
+                    scaled_bobbin = bobbin.newObject([o.scale(1000) for o in bobbin.objects])
+                    exporters.export(scaled_bobbin, f"{self.output_path}/{project_name}.step", "STEP")
+                    exporters.export(scaled_bobbin, f"{self.output_path}/{project_name}.stl", "STL")
+                    return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.stl"
+                else:
+                    return bobbin
+
+            except Exception:
+                return (None, None) if export_files else None
+
+    class StandardBobbin(IBobbin):
+        def get_bobbin_body(self, data, winding_window):
+            dims = data.get("dimensions", {})
+            processed = data.get("processedDescription", {})
+
+            if processed:
+                wall_thickness = processed.get("wallThickness", dims.get("wallThickness", 0.0005))
+                column_shape = processed.get("columnShape", "rectangular")
+                column_width = processed.get("columnWidth", 0)
+                column_depth = processed.get("columnDepth", column_width)
+                column_thickness = processed.get("columnThickness", wall_thickness)
+                bobbin_ww = processed.get("windingWindows", [{}])[0] if processed.get("windingWindows") else {}
+                ww_width = bobbin_ww.get("width", winding_window.get("width", 0))
+                ww_height = bobbin_ww.get("height", winding_window.get("height", 0))
+            else:
+                wall_thickness = dims.get("wallThickness", 0.0005)
+                ww_width = winding_window.get("width", 0)
+                ww_height = winding_window.get("height", 0)
+                column_shape = winding_window.get("columnShape", "rectangular")
+                column_width = winding_window.get("columnWidth", 0)
+                column_depth = winding_window.get("columnDepth", column_width)
+                column_thickness = wall_thickness
+
+            tube_height = ww_height
+
+            if column_shape == "round":
+                if column_width > 0:
+                    outer_radius = column_width
+                    hole_radius = column_width - column_thickness
+                    if hole_radius <= 0:
+                        hole_radius = outer_radius - wall_thickness
+                else:
+                    ww_coords = winding_window.get("coordinates", [0, 0])
+                    outer_radius = abs(ww_coords[0]) if ww_coords[0] != 0 else ww_width * 0.5
+                    hole_radius = outer_radius - wall_thickness
+
+                outer_cyl = cq.Workplane("XY").cylinder(tube_height, outer_radius)
+                inner_cyl = cq.Workplane("XY").cylinder(tube_height * 1.1, hole_radius)
+                body = outer_cyl - inner_cyl
+            else:
+                depth = winding_window.get("radialHeight", ww_width) if winding_window.get("radialHeight") else ww_width
+                outer_width = ww_width + wall_thickness * 2
+                outer_depth = depth + wall_thickness * 2
+
+                outer_box = cq.Workplane("XY").box(outer_width, outer_depth, tube_height)
+                inner_box = cq.Workplane("XY").box(ww_width, depth, tube_height * 1.1)
+
+                central_hole_width = depth * 0.8
+                central_hole_depth = depth * 0.8
+                central_hole = cq.Workplane("XY").box(central_hole_width, central_hole_depth, tube_height * 1.2)
+
+                body = outer_box - inner_box - central_hole
+
+            return body
+
+        def get_bobbin_flanges(self, data, winding_window):
+            dims = data.get("dimensions", {})
+            flange_thickness = dims.get("flangeThickness", 0.001)
+            flange_extension = dims.get("flangeExtension", 0.002)
+            processed = data.get("processedDescription", {})
+
+            if processed:
+                wall_thickness = processed.get("wallThickness", dims.get("wallThickness", 0.0005))
+                column_shape = processed.get("columnShape", "rectangular")
+                column_width = processed.get("columnWidth", 0)
+                column_depth = processed.get("columnDepth", column_width)
+                column_thickness = processed.get("columnThickness", wall_thickness)
+                bobbin_ww = processed.get("windingWindows", [{}])[0] if processed.get("windingWindows") else {}
+                ww_width = bobbin_ww.get("width", winding_window.get("width", 0))
+                ww_height = bobbin_ww.get("height", winding_window.get("height", 0))
+            else:
+                wall_thickness = dims.get("wallThickness", 0.0005)
+                ww_width = winding_window.get("width", 0)
+                ww_height = winding_window.get("height", 0)
+                column_shape = winding_window.get("columnShape", "rectangular")
+                column_width = winding_window.get("columnWidth", 0)
+                column_depth = winding_window.get("columnDepth", column_width)
+                column_thickness = wall_thickness
+
+            if column_shape == "round":
+                if column_width > 0:
+                    outer_radius = column_width
+                    hole_radius = column_width - column_thickness
+                    if hole_radius <= 0:
+                        hole_radius = outer_radius - wall_thickness
+                else:
+                    ww_coords = winding_window.get("coordinates", [0, 0])
+                    outer_radius = abs(ww_coords[0]) if ww_coords[0] != 0 else ww_width * 0.5
+                    hole_radius = outer_radius - wall_thickness
+
+                flange_outer_x = outer_radius + ww_width + flange_extension
+                flange_half_y = column_depth / 2 if column_depth > 0 else outer_radius
+
+                top_flange_solid = (
+                    cq.Workplane("XY")
+                    .box(flange_outer_x * 2, flange_half_y * 2, flange_thickness)
+                    .translate((0, 0, ww_height / 2 + flange_thickness / 2))
+                )
+                top_hole = (
+                    cq.Workplane("XY")
+                    .cylinder(flange_thickness * 1.1, hole_radius)
+                    .translate((0, 0, ww_height / 2 + flange_thickness / 2))
+                )
+                top_flange = top_flange_solid - top_hole
+
+                bottom_flange_solid = (
+                    cq.Workplane("XY")
+                    .box(flange_outer_x * 2, flange_half_y * 2, flange_thickness)
+                    .translate((0, 0, -(ww_height / 2 + flange_thickness / 2)))
+                )
+                bottom_hole = (
+                    cq.Workplane("XY")
+                    .cylinder(flange_thickness * 1.1, hole_radius)
+                    .translate((0, 0, -(ww_height / 2 + flange_thickness / 2)))
+                )
+                bottom_flange = bottom_flange_solid - bottom_hole
+                flanges = top_flange + bottom_flange
+            else:
+                depth = winding_window.get("radialHeight", ww_width) if winding_window.get("radialHeight") else ww_width
+                outer_width = ww_width + wall_thickness * 2
+                outer_depth = depth + wall_thickness * 2
+                flange_width = outer_width + flange_extension * 2
+                flange_depth = outer_depth + flange_extension * 2
+
+                central_hole_width = depth * 0.8
+                central_hole_depth = depth * 0.8
+
+                top_flange_solid = (
+                    cq.Workplane("XY")
+                    .box(flange_width, flange_depth, flange_thickness)
+                    .translate((0, 0, ww_height / 2 + flange_thickness / 2))
+                )
+                top_hole = (
+                    cq.Workplane("XY")
+                    .box(central_hole_width, central_hole_depth, flange_thickness * 1.1)
+                    .translate((0, 0, ww_height / 2 + flange_thickness / 2))
+                )
+                top_flange = top_flange_solid - top_hole
+
+                bottom_flange_solid = (
+                    cq.Workplane("XY")
+                    .box(flange_width, flange_depth, flange_thickness)
+                    .translate((0, 0, -(ww_height / 2 + flange_thickness / 2)))
+                )
+                bottom_hole = (
+                    cq.Workplane("XY")
+                    .box(central_hole_width, central_hole_depth, flange_thickness * 1.1)
+                    .translate((0, 0, -(ww_height / 2 + flange_thickness / 2)))
+                )
+                bottom_flange = bottom_flange_solid - bottom_hole
+                flanges = top_flange + bottom_flange
+
+            return flanges
+
+        def get_mounting_pins(self, data, outer_radius):
+            dims = data.get("dimensions", {})
+            pin_count = dims.get("pinCount", 0)
+            if pin_count == 0:
+                return None
+
+            pin_diameter = dims.get("pinDiameter", 0.0008)
+            pin_length = dims.get("pinLength", 0.003)
+            flange_thickness = dims.get("flangeThickness", 0.001)
+            ww_height = outer_radius
+
+            pins = None
+            angle_step = 360 / pin_count
+
+            for i in range(pin_count):
+                angle = math.radians(i * angle_step)
+                x = ww_height * 0.8 * math.cos(angle)
+                z = ww_height * 0.8 * math.sin(angle)
+
+                pin = (
+                    cq.Workplane("XZ")
+                    .cylinder(pin_length, pin_diameter / 2)
+                    .translate((x, -(flange_thickness + pin_length / 2), z))
+                )
+
+                if pins is None:
+                    pins = pin
+                else:
+                    pins = pins + pin
+
+            return pins
+
+    class IWinding(metaclass=ABCMeta):
+        def __init__(self):
+            self.output_path = f'{os.path.dirname(os.path.abspath(__file__))}/../../output/'
+
+        def set_output_path(self, output_path):
+            self.output_path = output_path
+
+        @abstractmethod
+        def get_single_turn(self, data, position, turn_index):
+            raise NotImplementedError
+
+        @abstractmethod
+        def get_layer(self, data, layer_index, bobbin_inner_dims):
+            raise NotImplementedError
+
+        def calculate_turn_positions(self, data, bobbin_inner_height):
+            wire_diameter = data.get("wireDiameter", 0.0005)
+            insulation = data.get("insulationThickness", 0.00005)
+            total_wire_diameter = wire_diameter + 2 * insulation
+            num_turns = data.get("numberOfTurns", 1)
+            num_layers = data.get("numberOfLayers", 1)
+
+            turns_per_layer = num_turns // num_layers
+            positions = []
+
+            for layer in range(num_layers):
+                for turn in range(turns_per_layer):
+                    y_pos = -bobbin_inner_height / 2 + total_wire_diameter / 2 + turn * total_wire_diameter
+                    positions.append({
+                        "layer": layer,
+                        "turn": turn,
+                        "y": y_pos,
+                        "layer_offset": layer * total_wire_diameter
+                    })
+
+            return positions
+
+        def get_winding(self, data, bobbin_dims, name="Winding", save_files=False, export_files=True):
+            try:
+                project_name = f"{name}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
+
+                turns_description = data.get("turnsDescription", [])
+                winding_name = data.get("windingName", name)
+
+                if turns_description:
+                    wire_diameter = data.get("wireDiameter")
+                    winding = self.get_winding_from_mas(turns_description, winding_name, wire_diameter)
+                    if winding is None:
+                        turns_description = []
+
+                if not turns_description:
+                    num_turns = data.get("numberOfTurns", 1)
+                    if num_turns > 100:
+                        winding = self.get_bulk_winding(data, bobbin_dims)
+                    else:
+                        winding = self.get_detailed_winding(data, bobbin_dims)
+
+                if winding is None:
+                    return (None, None) if export_files else None
+
+                coords = data.get("coordinates", [0, 0, 0])
+                rotation = data.get("rotation", [0, 0, 0])
+
+                if rotation[0] != 0:
+                    winding = winding.rotate((1, 0, 0), (-1, 0, 0), rotation[0] / math.pi * 180)
+                if rotation[1] != 0:
+                    winding = winding.rotate((0, 1, 0), (0, -1, 0), rotation[1] / math.pi * 180)
+                if rotation[2] != 0:
+                    winding = winding.rotate((0, 0, 1), (0, 0, -1), rotation[2] / math.pi * 180)
+
+                winding = winding.translate(convert_axis(coords))
+
+                pathlib.Path(self.output_path).mkdir(parents=True, exist_ok=True)
+
+                if export_files:
+                    from cadquery import exporters
+                    scaled_winding = winding.newObject([o.scale(1000) for o in winding.objects])
+                    exporters.export(scaled_winding, f"{self.output_path}/{project_name}.step", "STEP")
+                    exporters.export(scaled_winding, f"{self.output_path}/{project_name}.stl", "STL")
+                    return f"{self.output_path}/{project_name}.step", f"{self.output_path}/{project_name}.stl"
+                else:
+                    return winding
+
+            except Exception:
+                return (None, None) if export_files else None
+
+        def get_bulk_winding(self, data, bobbin_dims):
+            wire_diameter = data.get("wireDiameter", 0.0005)
+            insulation = data.get("insulationThickness", 0.00005)
+            num_turns = data.get("numberOfTurns", 1)
+            num_layers = data.get("numberOfLayers", 1)
+            total_wire_diameter = wire_diameter + 2 * insulation
+
+            ww_height = bobbin_dims.get("height", 0.01)
+            ww_width = bobbin_dims.get("width", 0.005)
+
+            layer_thickness = total_wire_diameter * num_layers
+            winding_length = ww_height * 0.9
+
+            bulk = (
+                cq.Workplane("XY")
+                .box(layer_thickness, ww_width * 0.8, winding_length)
+                .translate((ww_width / 2 + layer_thickness / 2, 0, 0))
+            )
+
+            return bulk
+
+        @abstractmethod
+        def get_detailed_winding(self, data, bobbin_dims):
+            raise NotImplementedError
+
+    class RoundWireWinding(IWinding):
+        def get_single_turn(self, data, position, turn_index):
+            wire_diameter = data.get("wireDiameter", 0.0005)
+
+            radius = position.get("radius", 0.005)
+            y_pos = position.get("y", 0)
+            layer_offset = position.get("layer_offset", 0)
+
+            turn_radius = radius + layer_offset
+
+            path = (
+                cq.Workplane("XY")
+                .center(0, 0)
+                .circle(turn_radius)
+            )
+
+            wire_profile = (
+                cq.Workplane("XZ")
+                .center(turn_radius, 0)
+                .circle(wire_diameter / 2)
+            )
+
+            turn = wire_profile.sweep(path, isFrenet=True)
+            turn = turn.translate((0, 0, y_pos))
+
+            return turn
+
+        def create_turn_from_description(self, turn_desc, wire_diameter=None):
+            radial_pos = turn_desc.coordinates[0]
+            z_pos = turn_desc.coordinates[1]
+
+            if wire_diameter is None:
+                if turn_desc.dimensions:
+                    wire_diameter = turn_desc.dimensions[0]
+                else:
+                    wire_diameter = 0.0005
+
+            path = (
+                cq.Workplane("XY")
+                .center(0, 0)
+                .circle(radial_pos)
+            )
+
+            wire_profile = (
+                cq.Workplane("XZ")
+                .center(radial_pos, 0)
+                .circle(wire_diameter / 2)
+            )
+
+            turn = wire_profile.sweep(path, isFrenet=True)
+            turn = turn.translate((0, 0, z_pos))
+
+            return turn
+
+        def get_winding_from_mas(self, turns_description, winding_name, wire_diameter=None):
+            all_turns = [TurnDescription.from_dict(t) for t in turns_description]
+            winding_turns = [t for t in all_turns if t.winding == winding_name]
+
+            if not winding_turns:
+                winding_turns = [t for t in all_turns if winding_name in t.winding]
+
+            if not winding_turns:
+                return None
+
+            winding = None
+            for turn_desc in winding_turns:
+                turn = self.create_turn_from_description(turn_desc, wire_diameter)
+
+                if winding is None:
+                    winding = turn
+                else:
+                    winding = winding + turn
+
+            return winding
+
+        def get_layer(self, data, layer_index, bobbin_inner_dims):
+            wire_diameter = data.get("wireDiameter", 0.0005)
+            insulation = data.get("insulationThickness", 0.00005)
+            total_wire_diameter = wire_diameter + 2 * insulation
+            num_turns = data.get("numberOfTurns", 1)
+            num_layers = data.get("numberOfLayers", 1)
+
+            ww_height = bobbin_inner_dims.get("height", 0.01)
+            ww_width = bobbin_inner_dims.get("width", 0.005)
+            column_width = bobbin_inner_dims.get("columnWidth", 0)
+            column_shape = bobbin_inner_dims.get("columnShape", "rectangular")
+
+            turns_per_layer = num_turns // num_layers
+            layer = None
+
+            if column_shape == "round" and column_width > 0:
+                wall_thickness = 0.0005
+                base_radius = column_width / 2 + wall_thickness + total_wire_diameter / 2
+            else:
+                base_radius = ww_width / 2 + total_wire_diameter / 2
+
+            for turn_idx in range(turns_per_layer):
+                z_pos = -ww_height / 2 + total_wire_diameter / 2 + turn_idx * total_wire_diameter
+
+                if z_pos > ww_height / 2 - total_wire_diameter / 2:
+                    break
+
+                position = {
+                    "radius": base_radius,
+                    "y": z_pos,
+                    "layer_offset": layer_index * total_wire_diameter
+                }
+
+                turn = self.get_single_turn(data, position, turn_idx)
+
+                if layer is None:
+                    layer = turn
+                else:
+                    layer = layer + turn
+
+            return layer
+
+        def get_detailed_winding(self, data, bobbin_dims):
+            num_layers = data.get("numberOfLayers", 1)
+            winding = None
+
+            for layer_idx in range(num_layers):
+                layer = self.get_layer(data, layer_idx, bobbin_dims)
+                if layer is not None:
+                    if winding is None:
+                        winding = layer
+                    else:
+                        winding = winding + layer
+
+            return winding
 
 
 if __name__ == '__main__':  # pragma: no cover

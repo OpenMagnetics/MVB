@@ -265,5 +265,41 @@ class TestConcentric(TestMagnetic):
         self._run_test('concentric_round_column_two_layers_rectangular_turns.json')
 
 
+# =============================================================================
+# Full Magnetic Assembly Tests (real MAS files)
+# =============================================================================
+
+class TestFullMagnetic(TestMagnetic):
+    """Tests for complete magnetic assemblies from real MAS design files."""
+
+    def test_etd49_round_wire_5_turns(self):
+        """Test ETD49 core with 6 round wire turns and bobbin."""
+        step_path, stl_path, solid_info = self._run_test(
+            'ETD49_N87_10uH_5T.json', validate_geometry=True
+        )
+
+        print(f"\n=== ETD49 Geometry ===")
+        print(f"Total solids: {len(solid_info)}")
+        for s in solid_info:
+            print(f"  Solid {s['index']}: vol={s['volume']:.1f}")
+
+        # 2 core halves + 1 bobbin + 6 turns = 9
+        assert len(solid_info) == 9, f"Expected 9 solids, got {len(solid_info)}"
+
+    def test_pq4040_foil_wire_6_turns(self):
+        """Test PQ40/40 core with 6 rectangular foil turns and bobbin."""
+        step_path, stl_path, solid_info = self._run_test(
+            'PQ4040_10u_6T_foil.json', validate_geometry=True
+        )
+
+        print(f"\n=== PQ4040 Geometry ===")
+        print(f"Total solids: {len(solid_info)}")
+        for s in solid_info:
+            print(f"  Solid {s['index']}: vol={s['volume']:.1f}")
+
+        # 2 core halves + 1 bobbin + 6 turns = 9
+        assert len(solid_info) == 9, f"Expected 9 solids, got {len(solid_info)}"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v', '-s'])
