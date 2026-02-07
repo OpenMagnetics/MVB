@@ -1,4 +1,6 @@
+import copy
 import enum
+
 import numpy
 
 
@@ -36,8 +38,6 @@ class ShapeFamily(enum.Enum, metaclass=Meta):
 
 
 def flatten_dimensions(data, scale_factor=1.0):
-    import copy
-
     dimensions = copy.deepcopy(data["dimensions"])
     for k, v in dimensions.items():
         if isinstance(v, dict):

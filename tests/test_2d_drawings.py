@@ -333,6 +333,29 @@ class TestDXFDrawings(unittest.TestCase):
                 entity_count = len(list(doc.modelspace()))
                 self.assertGreater(entity_count, 0, f"DXF {key} should have entities")
 
+    def test_dxf_hidden_layer(self):
+        """DXF projection should have a HIDDEN layer with DASHED linetype and entities."""
+        results = self.builder.get_dxf_drawings(
+            "E_42_dxf_hidden",
+            copy.deepcopy(E_CORE_GEO_DESC),
+            planes=[ViewPlane.XZ],
+            view_types=[ViewType.PROJECTION],
+            output_path=self.output_path,
+        )
+        self.assertIsInstance(results, dict)
+        self.assertTrue(len(results) > 0, "Should produce at least one DXF view")
+
+        import ezdxf
+
+        for key, filepath in results.items():
+            doc = ezdxf.readfile(filepath)
+            layer_names = [layer.dxf.name for layer in doc.layers]
+            self.assertIn("HIDDEN", layer_names, f"DXF {key} should have HIDDEN layer")
+            hidden_layer = doc.layers.get("HIDDEN")
+            self.assertEqual(hidden_layer.dxf.linetype, "DASHED", "HIDDEN layer should use DASHED linetype")
+            hidden_entities = [e for e in doc.modelspace() if e.dxf.layer == "HIDDEN"]
+            self.assertGreater(len(hidden_entities), 0, f"DXF {key} should have hidden entities")
+
 
 class TestFCMacroDrawings(unittest.TestCase):
     """Test FreeCAD macro generation."""

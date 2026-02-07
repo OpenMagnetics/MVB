@@ -1219,16 +1219,18 @@ def export_fcstd_macro_from_shape(shape, view_plane, output_path, filename, view
         ]
 
         for edge in edges:
-            sp = edge.startPoint()
-            ep = edge.endPoint()
-
-            # Skip degenerate zero-length edges (fixes "Both points are equal")
-            if sp.sub(ep).Length < 1e-6:
+            # Skip truly degenerate edges (zero geometric length)
+            if edge.Length() < 1e-6:
                 continue
 
+            sp = edge.startPoint()
+            ep = edge.endPoint()
             geom_type = edge.geomType()
 
             if geom_type == "LINE":
+                # For lines, also check start==end (degenerate point)
+                if sp.sub(ep).Length < 1e-6:
+                    continue
                 lines.append(f"sketch.addGeometry(Part.LineSegment(FreeCAD.Vector({sp.x}, {sp.y}, 0), FreeCAD.Vector({ep.x}, {ep.y}, 0)))")
             elif geom_type == "CIRCLE":
                 center = edge.Center()
