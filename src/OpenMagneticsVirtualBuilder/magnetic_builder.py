@@ -30,21 +30,26 @@ CadQueryMagneticBuilder = CadQueryBuilder
 
 if __name__ == "__main__":
     # Example usage
-    test_bobbin = {
+    winding_window = {"height": 0.01, "width": 0.003}
+    bobbin_data = {
         "processedDescription": {
             "columnDepth": 0.005,
             "columnWidth": 0.005,
             "columnThickness": 0.001,
             "wallThickness": 0.001,
             "columnShape": "rectangular",
-            "windingWindows": [{"height": 0.01, "width": 0.003}],
+            "windingWindows": [winding_window],
         }
     }
 
     builder = CadQueryBuilder()
-    result = builder.get_bobbin(test_bobbin, "test_bobbin", export_files=True)
+    step_file, stl_file = builder.get_bobbin(bobbin_data, winding_window, "test_bobbin", export_files=True)
 
-    if result["files"]:
-        print(f"Bobbin exported to: {result['files']}")
+    if step_file or stl_file:
+        print("Bobbin exported to:")
+        if step_file:
+            print(f"  STEP: {step_file}")
+        if stl_file:
+            print(f"  STL: {stl_file}")
     else:
         print("No bobbin generated (zero thickness)")
