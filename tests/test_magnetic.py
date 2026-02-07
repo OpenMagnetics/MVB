@@ -285,6 +285,20 @@ class TestFullMagnetic(TestMagnetic):
         # 2 core halves + 1 bobbin + 6 turns = 9
         assert len(solid_info) == 9, f"Expected 9 solids, got {len(solid_info)}"
 
+    def test_c20_round_wire_8_turns(self):
+        """Test C20 core with 8 round wire turns and bobbin."""
+        step_path, stl_path, solid_info = self._run_test("C20_30u_8T_5mm.json", validate_geometry=True)
+
+        print("\n=== C20 Geometry ===")
+        print(f"Total solids: {len(solid_info)}")
+
+        # 2 core halves (~26k mm³) + 1 bobbin (~17k mm³) + 8 turns (each with multiple segments)
+        cores = [s for s in solid_info if s["volume"] >= 20000]
+        bobbin = [s for s in solid_info if 10000 <= s["volume"] < 20000]
+        assert len(cores) == 2, f"Expected 2 core halves, got {len(cores)}"
+        assert len(bobbin) == 1, f"Expected 1 bobbin, got {len(bobbin)}"
+        assert len(solid_info) > 11, f"Expected at least 11 solids (cores + bobbin + turns), got {len(solid_info)}"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

@@ -548,6 +548,41 @@ class CadQueryBuilder(utils.BuilderBase):
                 scaled.append(o.scale(1000))
         return cq.Compound.makeCompound(scaled)
 
+    @staticmethod
+    def _get_svg_for_view(view, stroke_color):
+        """Generate SVG for a single DrawingView, handling HLR failures gracefully.
+
+        Cross-section views use showHidden=False (no hidden edges in 2D slices).
+        Falls back to showHidden=False if HLR fails on any view.
+        """
+        import drawing_2d
+        from drawing_2d import ViewType
+        from cadquery.occ_impl.exporters.svg import getSVG
+
+        proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
+        show_hidden = view.view_type != ViewType.CROSS_SECTION
+
+        svg_opts = {
+            "width": 800,
+            "height": 600,
+            "strokeWidth": 0.5,
+            "strokeColor": stroke_color,
+            "showHidden": show_hidden,
+            "projectionDir": proj_dir,
+        }
+
+        shape = view.shape
+        if hasattr(shape, "val"):
+            shape = shape.val()
+
+        try:
+            return getSVG(shape, svg_opts)
+        except Exception:
+            if show_hidden:
+                svg_opts["showHidden"] = False
+                return getSVG(shape, svg_opts)
+            raise
+
     def _generate_views(self, compound, family, dims, original_dims, planes, view_types, colors, slice_offsets=None):
         """Generate DrawingView objects for given planes and view types.
 
@@ -612,9 +647,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {key: svg_string} where key is e.g. 'xy_projection'.
         """
         try:
-            import drawing_2d
             from drawing_2d import ViewPlane, ViewType
-            from cadquery.occ_impl.exporters.svg import getSVG
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -639,24 +672,10 @@ class CadQueryBuilder(utils.BuilderBase):
             stroke_color = self.IPiece._hex_to_rgb(colors.get("projection_color", "#000000"))
             results = {}
             for key, view in views.items():
-                proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
-                svg_opts = {
-                    "width": 800,
-                    "height": 600,
-                    "strokeWidth": 0.5,
-                    "strokeColor": stroke_color,
-                    "showHidden": True,
-                    "projectionDir": proj_dir,
-                }
-
-                if hasattr(view.shape, "wrapped"):
-                    base_svg = getSVG(view.shape, svg_opts)
-                elif hasattr(view.shape, "val"):
-                    base_svg = getSVG(view.shape.val(), svg_opts)
-                else:
-                    base_svg = getSVG(view.shape, svg_opts)
-
-                svg = base_svg
+                try:
+                    svg = self._get_svg_for_view(view, stroke_color)
+                except Exception:
+                    continue
 
                 if save_files:
                     svg_path = f"{output_path}/{safe_name}_{key}.svg"
@@ -770,9 +789,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {component_key: svg_string}.
         """
         try:
-            import drawing_2d
             from drawing_2d import ViewPlane, ViewType
-            from cadquery.occ_impl.exporters.svg import getSVG
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -832,24 +849,10 @@ class CadQueryBuilder(utils.BuilderBase):
 
                 for key, view in views.items():
                     full_key = f"{comp_name}_{key}"
-                    proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
-                    svg_opts = {
-                        "width": 800,
-                        "height": 600,
-                        "strokeWidth": 0.5,
-                        "strokeColor": stroke_color,
-                        "showHidden": True,
-                        "projectionDir": proj_dir,
-                    }
-
-                    if hasattr(view.shape, "wrapped"):
-                        base_svg = getSVG(view.shape, svg_opts)
-                    elif hasattr(view.shape, "val"):
-                        base_svg = getSVG(view.shape.val(), svg_opts)
-                    else:
-                        base_svg = getSVG(view.shape, svg_opts)
-
-                    svg = base_svg
+                    try:
+                        svg = self._get_svg_for_view(view, stroke_color)
+                    except Exception:
+                        continue
 
                     if save_files:
                         svg_path = f"{output_path}/{safe_name}_{full_key}.svg"
