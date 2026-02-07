@@ -108,8 +108,8 @@ def cross_section_at_plane(shape, plane: ViewPlane, offset: float = 0.0):
 # ======================================================================
 
 
-def _hlr_project(shape, projection_dir):
-    """Project a 3D shape to 2D visible edges using OCC hidden-line removal.
+def _hlr_project(shape, projection_dir, include_hidden=False):
+    """Project a 3D shape to 2D edges using OCC hidden-line removal.
 
     Uses the same HLRBRep_Algo as CadQuery's getSVG(), producing consistent
     results across SVG/DXF/FCMacro formats.
@@ -117,9 +117,11 @@ def _hlr_project(shape, projection_dir):
     Args:
         shape: CadQuery shape/compound to project.
         projection_dir: Tuple (x, y, z) for the projection direction.
+        include_hidden: If True, return (visible, hidden) tuple.
 
     Returns:
-        A cq.Compound of visible 2D edges, or None on failure.
+        If include_hidden is False: a cq.Shape of visible edges, or None.
+        If include_hidden is True: tuple (visible_shape, hidden_shape), either may be None.
     """
     try:
         from OCP.HLRBRep import HLRBRep_Algo, HLRBRep_HLRToShape
@@ -147,27 +149,35 @@ def _hlr_project(shape, projection_dir):
 
         hlr_shapes = HLRBRep_HLRToShape(hlr)
 
-        builder = BRep_Builder()
-        compound = TopoDS_Compound()
-        builder.MakeCompound(compound)
-
-        for getter in (hlr_shapes.VCompound, hlr_shapes.Rg1LineVCompound, hlr_shapes.OutLineVCompound):
-            try:
-                s = getter()
-                if s.IsNull():
+        def _collect_edges(getters):
+            b = BRep_Builder()
+            comp = TopoDS_Compound()
+            b.MakeCompound(comp)
+            has_edges = False
+            for getter in getters:
+                try:
+                    s = getter()
+                    if s.IsNull():
+                        continue
+                    BRepLib.BuildCurves3d_s(s)
+                    explorer = TopExp_Explorer(s, TopAbs_EDGE)
+                    while explorer.More():
+                        b.Add(comp, explorer.Current())
+                        has_edges = True
+                        explorer.Next()
+                except Exception:
                     continue
-                BRepLib.BuildCurves3d_s(s)
-                explorer = TopExp_Explorer(s, TopAbs_EDGE)
-                while explorer.More():
-                    builder.Add(compound, explorer.Current())
-                    explorer.Next()
-            except Exception:
-                continue
+            return cq.Shape(comp) if has_edges else None
 
-        return cq.Shape(compound)
+        visible = _collect_edges((hlr_shapes.VCompound, hlr_shapes.Rg1LineVCompound, hlr_shapes.OutLineVCompound))
+        if not include_hidden:
+            return visible
+
+        hidden = _collect_edges((hlr_shapes.HCompound, hlr_shapes.Rg1LineHCompound, hlr_shapes.OutLineHCompound))
+        return visible, hidden
 
     except Exception:
-        return None
+        return (None, None) if include_hidden else None
 
 
 def _shape_to_edge_compound(shape):
@@ -1048,7 +1058,7 @@ def build_annotated_svg(
             "height": 600,
             "strokeWidth": 0.5,
             "strokeColor": stroke_color,
-            "showHidden": False,
+            "showHidden": True,
             "projectionDir": projection_dir,
         }
 
@@ -1090,11 +1100,12 @@ def build_annotated_svg(
 # ======================================================================
 
 
-def export_dxf_from_shape(shape, view_plane, output_path, filename, view_type=ViewType.PROJECTION, colors=None):
+def export_dxf_from_shape(shape, view_plane, output_path, filename, view_type=ViewType.PROJECTION, colors=None, show_hidden=True):
     """Export a shape's 2D projection or cross-section to DXF.
 
     Uses HLR projection for PROJECTION views and direct edges for
     CROSS_SECTION views, then writes via CadQuery's DxfDocument.
+    Hidden edges are placed on a 'HIDDEN' layer with dashed linetype.
 
     Args:
         shape: CadQuery shape to project.
@@ -1103,6 +1114,7 @@ def export_dxf_from_shape(shape, view_plane, output_path, filename, view_type=Vi
         filename: Output filename (without extension).
         view_type: ViewType.PROJECTION or ViewType.CROSS_SECTION.
         colors: Optional color config dict.
+        show_hidden: Whether to include hidden edges (dashed, separate layer).
 
     Returns:
         File path of the exported DXF, or None on failure.
@@ -1112,15 +1124,38 @@ def export_dxf_from_shape(shape, view_plane, output_path, filename, view_type=Vi
 
         if view_type == ViewType.PROJECTION:
             proj_dir = PROJECTION_DIRS[view_plane]
-            projected = _hlr_project(shape, proj_dir)
-            if projected is None:
+            if show_hidden:
+                visible, hidden = _hlr_project(shape, proj_dir, include_hidden=True)
+            else:
+                visible = _hlr_project(shape, proj_dir, include_hidden=False)
+                hidden = None
+            if visible is None:
                 return None
-            edge_compound = _shape_to_edge_compound(projected)
+            edge_compound = _shape_to_edge_compound(visible)
         else:
             edge_compound = _shape_to_edge_compound(shape)
+            hidden = None
 
         dxf_doc = DxfDocument()
         dxf_doc.add_shape(edge_compound)
+
+        # Add hidden edges on a separate layer with dashed linetype
+        if hidden is not None:
+            doc = dxf_doc.document
+            # Add DASHED linetype if not present
+            if "DASHED" not in doc.linetypes:
+                doc.linetypes.add("DASHED", pattern=[0.4, 0.2, -0.2])
+            # Create HIDDEN layer
+            doc.layers.add("HIDDEN", color=8, linetype="DASHED")  # color 8 = light grey
+            hidden_compound = _shape_to_edge_compound(hidden)
+            # Add hidden edges via a second DxfDocument, then move entities to HIDDEN layer
+            hidden_dxf = DxfDocument()
+            hidden_dxf.add_shape(hidden_compound)
+            msp = doc.modelspace()
+            for entity in list(hidden_dxf.document.modelspace()):
+                copied = entity.copy()
+                copied.dxf.layer = "HIDDEN"
+                msp.add_entity(copied)
 
         filepath = f"{output_path}/{filename}.dxf"
         dxf_doc.document.saveas(filepath)
@@ -1198,19 +1233,32 @@ def export_fcstd_macro_from_shape(shape, view_plane, output_path, filename, view
             elif geom_type == "CIRCLE":
                 center = edge.Center()
                 radius = edge.radius()
-                lines.append(f"sketch.addGeometry(Part.Circle(FreeCAD.Vector({center.x}, {center.y}, 0), FreeCAD.Vector(0, 0, 1), {radius}))")
-            elif geom_type in ("ARC_OF_CIRCLE", "ARCOFCIRCLE"):
-                center = edge.Center()
-                radius = edge.radius()
-                lines.append(
-                    f"sketch.addGeometry(Part.ArcOfCircle("
-                    f"Part.Circle(FreeCAD.Vector({center.x}, {center.y}, 0), "
-                    f"FreeCAD.Vector(0, 0, 1), {radius}), "
-                    f"{math.atan2(sp.y - center.y, sp.x - center.x)}, "
-                    f"{math.atan2(ep.y - center.y, ep.x - center.x)}))"
-                )
+                start_angle = math.atan2(sp.y - center.y, sp.x - center.x)
+                end_angle = math.atan2(ep.y - center.y, ep.x - center.x)
+                if abs(end_angle - start_angle) < 1e-6 or abs(abs(end_angle - start_angle) - 2 * math.pi) < 1e-6:
+                    # Full circle
+                    lines.append(f"sketch.addGeometry(Part.Circle(FreeCAD.Vector({center.x}, {center.y}, 0), FreeCAD.Vector(0, 0, 1), {radius}))")
+                else:
+                    # Arc of circle
+                    lines.append(f"sketch.addGeometry(Part.ArcOfCircle(Part.Circle(FreeCAD.Vector({center.x}, {center.y}, 0), FreeCAD.Vector(0, 0, 1), {radius}), {start_angle}, {end_angle}))")
+            elif geom_type == "BSPLINE":
+                # Approximate BSpline as polyline segments
+                from OCP.BRepAdaptor import BRepAdaptor_Curve
+
+                adaptor = BRepAdaptor_Curve(edge.wrapped)
+                u_start = adaptor.FirstParameter()
+                u_end = adaptor.LastParameter()
+                n_points = 20
+                prev = None
+                for i in range(n_points + 1):
+                    u = u_start + (u_end - u_start) * i / n_points
+                    p = adaptor.Value(u)
+                    pt = (p.X(), p.Y())
+                    if prev is not None:
+                        lines.append(f"sketch.addGeometry(Part.LineSegment(FreeCAD.Vector({prev[0]}, {prev[1]}, 0), FreeCAD.Vector({pt[0]}, {pt[1]}, 0)))")
+                    prev = pt
             else:
-                # Fallback: approximate as line segment
+                # Fallback: line segment
                 lines.append(f"sketch.addGeometry(Part.LineSegment(FreeCAD.Vector({sp.x}, {sp.y}, 0), FreeCAD.Vector({ep.x}, {ep.y}, 0)))")
 
         lines.append("")

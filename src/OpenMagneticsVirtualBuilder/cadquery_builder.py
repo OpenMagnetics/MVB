@@ -489,7 +489,7 @@ class CadQueryBuilder(utils.BuilderBase):
                 "height": 600,
                 "strokeWidth": 0.5,
                 "strokeColor": stroke_color,
-                "showHidden": False,
+                "showHidden": True,
                 "projectionDir": (0, 1, 0),
             }
 
@@ -645,7 +645,7 @@ class CadQueryBuilder(utils.BuilderBase):
                     "height": 600,
                     "strokeWidth": 0.5,
                     "strokeColor": stroke_color,
-                    "showHidden": False,
+                    "showHidden": True,
                     "projectionDir": proj_dir,
                 }
 
@@ -838,7 +838,7 @@ class CadQueryBuilder(utils.BuilderBase):
                         "height": 600,
                         "strokeWidth": 0.5,
                         "strokeColor": stroke_color,
-                        "showHidden": False,
+                        "showHidden": True,
                         "projectionDir": proj_dir,
                     }
 
@@ -1941,7 +1941,7 @@ class CadQueryBuilder(utils.BuilderBase):
                     "height": 600,
                     "strokeWidth": 0.5,
                     "strokeColor": stroke_color,
-                    "showHidden": False,
+                    "showHidden": True,
                 }
 
                 # Top view
@@ -1998,7 +1998,7 @@ class CadQueryBuilder(utils.BuilderBase):
                     "height": 600,
                     "strokeWidth": 0.5,
                     "strokeColor": stroke_color,
-                    "showHidden": False,
+                    "showHidden": True,
                     "projectionDir": projection_dir,
                 }
 
