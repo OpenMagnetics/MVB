@@ -75,11 +75,7 @@ class Tests(unittest.TestCase):
         with open(f"{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson", "r") as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ["ui", "ut", "pqi"]:
-                    # if data['family'] != "c":
-                    # if data['name'] != "T 22/14/13":
-                    # continue
-
+                if data["family"] not in ["ui", "ut", "pqi", "t"]:
                     core = copy.deepcopy(dummyCore)
                     core["functionalDescription"]["shape"] = data
 
@@ -111,7 +107,7 @@ class Tests(unittest.TestCase):
         with open(f"{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson", "r") as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ["ui", "ut", "pqi"]:
+                if data["family"] not in ["ui", "ut", "pqi", "t"]:
                     core = copy.deepcopy(dummyCore)
                     core["functionalDescription"]["shape"] = data
 
@@ -129,7 +125,7 @@ class Tests(unittest.TestCase):
         with open(f"{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson", "r") as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ["ui", "ut", "pqi"]:
+                if data["family"] not in ["ui", "ut", "pqi", "t"]:
                     core = copy.deepcopy(dummyCore)
                     core["functionalDescription"]["shape"] = data
 
@@ -186,7 +182,7 @@ class Tests(unittest.TestCase):
         with open(f"{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson", "r") as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ["ui", "ut", "pqi"]:
+                if data["family"] not in ["ui", "ut", "pqi", "t"]:
                     core = copy.deepcopy(dummyCore)
                     core["functionalDescription"]["shape"] = data
 
@@ -218,8 +214,7 @@ class Tests(unittest.TestCase):
         with open(f"{os.path.dirname(os.path.abspath(__file__))}/../../MAS/data/core_shapes.ndjson", "r") as f:
             for ndjson_line in f:
                 data = json.loads(ndjson_line)
-                if data["family"] not in ["ui", "ut", "pqi"]:
-                    # if data["family"] in ['p']:
+                if data["family"] not in ["ui", "ut", "pqi", "t"]:
                     print(data["name"])
                     core = copy.deepcopy(dummyCore)
                     core["functionalDescription"]["shape"] = data
@@ -228,7 +223,6 @@ class Tests(unittest.TestCase):
                     builder.Builder("CadQuery").get_core_gapping_technical_drawing(data["name"], core_datum)
 
                     filename = f"{data['name']}".replace(" ", "_").replace("-", "_").replace("/", "_").replace(".", "__")
-                    # print(f"{self.output_path}/{filename}_core_gaps_FrontView.svg")
                     self.assertTrue(os.path.exists(f"{self.output_path}/{filename}_core_gaps_FrontView.svg"))
 
     def test_0(self):
