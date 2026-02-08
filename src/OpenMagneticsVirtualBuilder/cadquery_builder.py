@@ -556,11 +556,10 @@ class CadQueryBuilder(utils.BuilderBase):
         Falls back to showHidden=False if HLR fails on any view.
         """
         import drawing_2d
-        from drawing_2d import ViewType
         from cadquery.occ_impl.exporters.svg import getSVG
 
         proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
-        show_hidden = view.view_type != ViewType.CROSS_SECTION
+        show_hidden = view.view_type != drawing_2d.ViewType.CROSS_SECTION
 
         svg_opts = {
             "width": 800,
