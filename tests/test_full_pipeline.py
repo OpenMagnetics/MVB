@@ -147,8 +147,8 @@ class TestFullPipeline:
         assert os.path.getsize(r["step"]) > 1000, "STEP file too small"
         assert os.path.getsize(r["stl"]) > 1000, "STL file too small"
 
-        # SVG: expect assembly + core views (cross-sections may be empty for some planes)
-        assert len(r["svg"]) > 0, "Should produce at least some SVG views"
+        # SVG: 2 components × 3 planes × 2 view types = 12 views
+        assert len(r["svg"]) == 12, f"Expected 12 SVG views, got {len(r['svg'])}: {sorted(r['svg'].keys())}"
         for key, svg in r["svg"].items():
             assert "<svg" in svg, f"SVG {key} missing <svg> tag"
             assert len(svg) > 100, f"SVG {key} too small ({len(svg)} chars)"
@@ -186,8 +186,8 @@ class TestFullPipeline:
         assert os.path.getsize(r["step"]) > 1000, "STEP file too small"
         assert os.path.getsize(r["stl"]) > 1000, "STL file too small"
 
-        # SVG
-        assert len(r["svg"]) > 0, "Should produce at least some SVG views"
+        # SVG: 2 components × 3 planes × 2 view types = 12 views
+        assert len(r["svg"]) == 12, f"Expected 12 SVG views, got {len(r['svg'])}: {sorted(r['svg'].keys())}"
         for key, svg in r["svg"].items():
             assert "<svg" in svg, f"SVG {key} missing <svg> tag"
 
@@ -224,8 +224,8 @@ class TestFullPipeline:
         assert os.path.getsize(r["step"]) > 1000, "STEP file too small"
         assert os.path.getsize(r["stl"]) > 1000, "STL file too small"
 
-        # SVG
-        assert len(r["svg"]) > 0, "Should produce at least some SVG views"
+        # SVG: 2 components × 3 planes × 2 view types = 12 views
+        assert len(r["svg"]) == 12, f"Expected 12 SVG views, got {len(r['svg'])}: {sorted(r['svg'].keys())}"
         for key, svg in r["svg"].items():
             assert "<svg" in svg, f"SVG {key} missing <svg> tag"
 
@@ -262,8 +262,8 @@ class TestFullPipeline:
         assert os.path.getsize(r["step"]) > 1000, "STEP file too small"
         assert os.path.getsize(r["stl"]) > 1000, "STL file too small"
 
-        # SVG
-        assert len(r["svg"]) > 0, "Should produce at least some SVG views"
+        # SVG: 2 components × 3 planes × 2 view types = 12 views
+        assert len(r["svg"]) == 12, f"Expected 12 SVG views, got {len(r['svg'])}: {sorted(r['svg'].keys())}"
         for key, svg in r["svg"].items():
             assert "<svg" in svg, f"SVG {key} missing <svg> tag"
 
@@ -300,8 +300,8 @@ class TestFullPipeline:
         assert os.path.getsize(r["step"]) > 1000, "STEP file too small"
         assert os.path.getsize(r["stl"]) > 1000, "STL file too small"
 
-        # SVG: some cross-section views may be skipped for C-family
-        assert len(r["svg"]) > 0, "Should produce at least some SVG views"
+        # SVG: 2 components × 3 planes × 2 view types = 12 views
+        assert len(r["svg"]) == 12, f"Expected 12 SVG views, got {len(r['svg'])}: {sorted(r['svg'].keys())}"
         for key, svg in r["svg"].items():
             assert "<svg" in svg, f"SVG {key} missing <svg> tag"
 

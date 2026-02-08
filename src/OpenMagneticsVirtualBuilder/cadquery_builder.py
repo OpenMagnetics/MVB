@@ -555,11 +555,13 @@ class CadQueryBuilder(utils.BuilderBase):
         Cross-section views use showHidden=False (no hidden edges in 2D slices).
         Falls back to showHidden=False if HLR fails on any view.
         """
-        import drawing_2d
+        import logging
+
+        from drawing_2d import PROJECTION_DIRS, ViewType
         from cadquery.occ_impl.exporters.svg import getSVG
 
-        proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
-        show_hidden = view.view_type != drawing_2d.ViewType.CROSS_SECTION
+        proj_dir = PROJECTION_DIRS[view.plane]
+        show_hidden = view.view_type != ViewType.CROSS_SECTION
 
         svg_opts = {
             "width": 800,
@@ -576,8 +578,9 @@ class CadQueryBuilder(utils.BuilderBase):
 
         try:
             return getSVG(shape, svg_opts)
-        except Exception:
+        except (RuntimeError, ValueError):
             if show_hidden:
+                logging.warning("SVG HLR failed for view %s, retrying without hidden edges", view.plane)
                 svg_opts["showHidden"] = False
                 return getSVG(shape, svg_opts)
             raise
@@ -598,8 +601,7 @@ class CadQueryBuilder(utils.BuilderBase):
         Returns:
             Dict of {key: DrawingView} where key is e.g. 'xy_projection'.
         """
-        import drawing_2d
-        from drawing_2d import ViewType, DrawingView
+        from drawing_2d import ViewType, DrawingView, cross_section_at_plane
 
         views = {}
         for plane in planes:
@@ -615,7 +617,7 @@ class CadQueryBuilder(utils.BuilderBase):
                     elif family:
                         offsets = shape_configs.CROSS_SECTION_OFFSETS.get(family.lower(), {})
                         offset = offsets.get(plane.value, 0.0)
-                    shape = drawing_2d.cross_section_at_plane(compound, plane, offset)
+                    shape = cross_section_at_plane(compound, plane, offset)
                     if shape is None:
                         continue
 
@@ -646,6 +648,8 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {key: svg_string} where key is e.g. 'xy_projection'.
         """
         try:
+            import logging
+
             from drawing_2d import ViewPlane, ViewType
 
             if planes is None:
@@ -673,7 +677,8 @@ class CadQueryBuilder(utils.BuilderBase):
             for key, view in views.items():
                 try:
                     svg = self._get_svg_for_view(view, stroke_color)
-                except Exception:
+                except (RuntimeError, ValueError) as e:
+                    logging.warning("Skipping SVG view %s: %s", key, e)
                     continue
 
                 if save_files:
@@ -695,8 +700,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {key: filepath} where key is e.g. 'xy_projection'.
         """
         try:
-            import drawing_2d
-            from drawing_2d import ViewPlane, ViewType
+            from drawing_2d import ViewPlane, ViewType, export_dxf_from_shape
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -720,7 +724,7 @@ class CadQueryBuilder(utils.BuilderBase):
 
             results = {}
             for key, view in views.items():
-                filepath = drawing_2d.export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type, colors=colors)
+                filepath = export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type, colors=colors)
                 if filepath:
                     results[key] = filepath
 
@@ -736,8 +740,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {key: filepath} where key is e.g. 'xy_projection'.
         """
         try:
-            import drawing_2d
-            from drawing_2d import ViewPlane, ViewType
+            from drawing_2d import ViewPlane, ViewType, export_fcstd_macro_from_shape
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -760,7 +763,7 @@ class CadQueryBuilder(utils.BuilderBase):
 
             results = {}
             for key, view in views.items():
-                filepath = drawing_2d.export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type)
+                filepath = export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type)
                 if filepath:
                     results[key] = filepath
 
@@ -788,6 +791,8 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {component_key: svg_string}.
         """
         try:
+            import logging
+
             from drawing_2d import ViewPlane, ViewType
 
             if planes is None:
@@ -850,7 +855,8 @@ class CadQueryBuilder(utils.BuilderBase):
                     full_key = f"{comp_name}_{key}"
                     try:
                         svg = self._get_svg_for_view(view, stroke_color)
-                    except Exception:
+                    except (RuntimeError, ValueError) as e:
+                        logging.warning("Skipping assembly SVG view %s: %s", full_key, e)
                         continue
 
                     if save_files:
@@ -872,8 +878,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {component_key: filepath}.
         """
         try:
-            import drawing_2d
-            from drawing_2d import ViewPlane, ViewType
+            from drawing_2d import ViewPlane, ViewType, export_dxf_from_shape
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -928,7 +933,7 @@ class CadQueryBuilder(utils.BuilderBase):
 
                 for key, view in views.items():
                     full_key = f"{comp_name}_{key}"
-                    filepath = drawing_2d.export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type, colors=colors)
+                    filepath = export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type, colors=colors)
                     if filepath:
                         results[full_key] = filepath
 
@@ -944,8 +949,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {component_key: filepath}.
         """
         try:
-            import drawing_2d
-            from drawing_2d import ViewPlane, ViewType
+            from drawing_2d import ViewPlane, ViewType, export_fcstd_macro_from_shape
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -999,7 +1003,7 @@ class CadQueryBuilder(utils.BuilderBase):
 
                 for key, view in views.items():
                     full_key = f"{comp_name}_{key}"
-                    filepath = drawing_2d.export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type)
+                    filepath = export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type)
                     if filepath:
                         results[full_key] = filepath
 
