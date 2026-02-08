@@ -4,7 +4,8 @@ End-to-end pipeline tests: MAS → 3D (STEP/STL) → 2D (SVG/DXF/FCMacro).
 Tests run against real MAS design files:
 - ETD49_N87_10uH_5T.json          (E-family, round wire, concentric)
 - PQ4040_10u_6T_foil.json         (PQ-family, foil wire, concentric)
-- toroidal_two_turns_spread.json   (T-family, litz wire, toroidal)
+- toroidal_two_turns_spread.json   (T-family, litz wire, toroidal, 2 turns)
+- T402416_edge40_4uH_8T.json      (T-family, round wire, toroidal, 8 turns)
 - C20_30u_8T_5mm.json             (C-family, round wire, half-set)
 
 Each test generates:
@@ -218,6 +219,44 @@ class TestFullPipeline:
     def test_toroidal_full_pipeline(self):
         """T25 toroidal 2 litz turns: MAS → 3D → SVG/DXF/FCMacro, all planes, projection + cross-section."""
         r = self._run_pipeline("toroidal_two_turns_spread.json", "T25_toroidal")
+
+        # 3D assertions
+        assert os.path.getsize(r["step"]) > 1000, "STEP file too small"
+        assert os.path.getsize(r["stl"]) > 1000, "STL file too small"
+
+        # SVG
+        assert len(r["svg"]) > 0, "Should produce at least some SVG views"
+        for key, svg in r["svg"].items():
+            assert "<svg" in svg, f"SVG {key} missing <svg> tag"
+
+        # Core SVG with path elements
+        for key, svg in r["core_svg"].items():
+            assert "<path" in svg, f"Core SVG {key} should have <path> elements"
+
+        # DXF
+        if r["dxf"]:
+            import ezdxf
+
+            for key, path in r["dxf"].items():
+                assert os.path.exists(path), f"DXF {key} file missing"
+                doc = ezdxf.readfile(path)
+                assert doc is not None
+
+        # FCMacro
+        if r["fcmacro"]:
+            for key, path in r["fcmacro"].items():
+                assert os.path.exists(path), f"FCMacro {key} file missing"
+                with open(path) as f:
+                    code = f.read()
+                compile(code, path, "exec")
+
+    # =====================================================================
+    # T402416 (T-family, round wire, 8 turns)
+    # =====================================================================
+
+    def test_t402416_full_pipeline(self):
+        """T402416 4µH 8T round wire: MAS → 3D → SVG/DXF/FCMacro, all planes, projection + cross-section."""
+        r = self._run_pipeline("T402416_edge40_4uH_8T.json", "T402416")
 
         # 3D assertions
         assert os.path.getsize(r["step"]) > 1000, "STEP file too small"
