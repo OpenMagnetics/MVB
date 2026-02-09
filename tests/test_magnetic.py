@@ -203,6 +203,22 @@ class TestToroidal(TestMagnetic):
         assert len(cores) == 1, f"Expected 1 core, got {len(cores)}"
         assert len(turns) == expected_turns * 10, f"Expected {expected_turns * 10} turn components, got {len(turns)}"
 
+    def test_t402416_round_wire_8_turns(self):
+        """Test T402416 toroidal core with 8 round wire turns."""
+        step_path, stl_path, solid_info = self._run_test("T402416_edge40_4uH_8T.json", validate_geometry=True)
+
+        print("\n=== T402416 Geometry Validation ===")
+        print(f"Total solids: {len(solid_info)}")
+
+        # Core volume ~12868, largest turn component ~215
+        cores = [s for s in solid_info if s["volume"] >= 1000]
+        turns = [s for s in solid_info if s["volume"] < 1000]
+        print(f"Cores: {len(cores)}, Turn components: {len(turns)}")
+
+        # 1 core + 8 turns × 10 components = 81
+        assert len(cores) == 1, f"Expected 1 core, got {len(cores)}"
+        assert len(turns) == 80, f"Expected 80 turn components for 8 turns, got {len(turns)}"
+
     def test_toroidal_full_layer_rectangular_wires(self):
         """Test creating a toroidal core with full layer of rectangular wire turns."""
         self._run_test("toroidal_full_layer_rectangular_wires.json")
@@ -284,6 +300,21 @@ class TestFullMagnetic(TestMagnetic):
 
         # 2 core halves + 1 bobbin + 6 turns = 9
         assert len(solid_info) == 9, f"Expected 9 solids, got {len(solid_info)}"
+
+    def test_c20_round_wire_8_turns(self):
+        """Test C20 core with 8 round wire turns and bobbin."""
+        step_path, stl_path, solid_info = self._run_test("C20_30u_8T_5mm.json", validate_geometry=True)
+
+        print("\n=== C20 Geometry ===")
+        print(f"Total solids: {len(solid_info)}")
+
+        # 2 core halves (~26k mm³) + 1 bobbin (~17k mm³) + 8 turns (pipe-swept single solids)
+        cores = [s for s in solid_info if s["volume"] >= 20000]
+        bobbin = [s for s in solid_info if 10000 <= s["volume"] < 20000]
+        turns = [s for s in solid_info if s["volume"] < 10000]
+        assert len(cores) == 2, f"Expected 2 core halves, got {len(cores)}"
+        assert len(bobbin) == 1, f"Expected 1 bobbin, got {len(bobbin)}"
+        assert len(turns) == 8, f"Expected 8 turns, got {len(turns)}"
 
 
 if __name__ == "__main__":

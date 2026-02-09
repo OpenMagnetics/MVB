@@ -548,6 +548,43 @@ class CadQueryBuilder(utils.BuilderBase):
                 scaled.append(o.scale(1000))
         return cq.Compound.makeCompound(scaled)
 
+    @staticmethod
+    def _get_svg_for_view(view, stroke_color):
+        """Generate SVG for a single DrawingView, handling HLR failures gracefully.
+
+        Cross-section views use showHidden=False (no hidden edges in 2D slices).
+        Falls back to showHidden=False if HLR fails on any view.
+        """
+        import logging
+
+        from drawing_2d import PROJECTION_DIRS, ViewType
+        from cadquery.occ_impl.exporters.svg import getSVG
+
+        proj_dir = PROJECTION_DIRS[view.plane]
+        show_hidden = view.view_type != ViewType.CROSS_SECTION
+
+        svg_opts = {
+            "width": 800,
+            "height": 600,
+            "strokeWidth": 0.5,
+            "strokeColor": stroke_color,
+            "showHidden": show_hidden,
+            "projectionDir": proj_dir,
+        }
+
+        shape = view.shape
+        if hasattr(shape, "val"):
+            shape = shape.val()
+
+        try:
+            return getSVG(shape, svg_opts)
+        except (RuntimeError, ValueError):
+            if show_hidden:
+                logging.warning("SVG HLR failed for view %s, retrying without hidden edges", view.plane)
+                svg_opts["showHidden"] = False
+                return getSVG(shape, svg_opts)
+            raise
+
     def _generate_views(self, compound, family, dims, original_dims, planes, view_types, colors, slice_offsets=None):
         """Generate DrawingView objects for given planes and view types.
 
@@ -564,8 +601,7 @@ class CadQueryBuilder(utils.BuilderBase):
         Returns:
             Dict of {key: DrawingView} where key is e.g. 'xy_projection'.
         """
-        import drawing_2d
-        from drawing_2d import ViewType, DrawingView
+        from drawing_2d import ViewType, DrawingView, cross_section_at_plane
 
         views = {}
         for plane in planes:
@@ -581,7 +617,7 @@ class CadQueryBuilder(utils.BuilderBase):
                     elif family:
                         offsets = shape_configs.CROSS_SECTION_OFFSETS.get(family.lower(), {})
                         offset = offsets.get(plane.value, 0.0)
-                    shape = drawing_2d.cross_section_at_plane(compound, plane, offset)
+                    shape = cross_section_at_plane(compound, plane, offset)
                     if shape is None:
                         continue
 
@@ -612,9 +648,9 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {key: svg_string} where key is e.g. 'xy_projection'.
         """
         try:
-            import drawing_2d
+            import logging
+
             from drawing_2d import ViewPlane, ViewType
-            from cadquery.occ_impl.exporters.svg import getSVG
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -639,24 +675,11 @@ class CadQueryBuilder(utils.BuilderBase):
             stroke_color = self.IPiece._hex_to_rgb(colors.get("projection_color", "#000000"))
             results = {}
             for key, view in views.items():
-                proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
-                svg_opts = {
-                    "width": 800,
-                    "height": 600,
-                    "strokeWidth": 0.5,
-                    "strokeColor": stroke_color,
-                    "showHidden": True,
-                    "projectionDir": proj_dir,
-                }
-
-                if hasattr(view.shape, "wrapped"):
-                    base_svg = getSVG(view.shape, svg_opts)
-                elif hasattr(view.shape, "val"):
-                    base_svg = getSVG(view.shape.val(), svg_opts)
-                else:
-                    base_svg = getSVG(view.shape, svg_opts)
-
-                svg = base_svg
+                try:
+                    svg = self._get_svg_for_view(view, stroke_color)
+                except (RuntimeError, ValueError) as e:
+                    logging.warning("Skipping SVG view %s: %s", key, e)
+                    continue
 
                 if save_files:
                     svg_path = f"{output_path}/{safe_name}_{key}.svg"
@@ -677,8 +700,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {key: filepath} where key is e.g. 'xy_projection'.
         """
         try:
-            import drawing_2d
-            from drawing_2d import ViewPlane, ViewType
+            from drawing_2d import ViewPlane, ViewType, export_dxf_from_shape
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -702,7 +724,7 @@ class CadQueryBuilder(utils.BuilderBase):
 
             results = {}
             for key, view in views.items():
-                filepath = drawing_2d.export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type, colors=colors)
+                filepath = export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type, colors=colors)
                 if filepath:
                     results[key] = filepath
 
@@ -718,8 +740,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {key: filepath} where key is e.g. 'xy_projection'.
         """
         try:
-            import drawing_2d
-            from drawing_2d import ViewPlane, ViewType
+            from drawing_2d import ViewPlane, ViewType, export_fcstd_macro_from_shape
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -742,7 +763,7 @@ class CadQueryBuilder(utils.BuilderBase):
 
             results = {}
             for key, view in views.items():
-                filepath = drawing_2d.export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type)
+                filepath = export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{key}", view_type=view.view_type)
                 if filepath:
                     results[key] = filepath
 
@@ -770,9 +791,9 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {component_key: svg_string}.
         """
         try:
-            import drawing_2d
+            import logging
+
             from drawing_2d import ViewPlane, ViewType
-            from cadquery.occ_impl.exporters.svg import getSVG
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -832,24 +853,11 @@ class CadQueryBuilder(utils.BuilderBase):
 
                 for key, view in views.items():
                     full_key = f"{comp_name}_{key}"
-                    proj_dir = drawing_2d.PROJECTION_DIRS[view.plane]
-                    svg_opts = {
-                        "width": 800,
-                        "height": 600,
-                        "strokeWidth": 0.5,
-                        "strokeColor": stroke_color,
-                        "showHidden": True,
-                        "projectionDir": proj_dir,
-                    }
-
-                    if hasattr(view.shape, "wrapped"):
-                        base_svg = getSVG(view.shape, svg_opts)
-                    elif hasattr(view.shape, "val"):
-                        base_svg = getSVG(view.shape.val(), svg_opts)
-                    else:
-                        base_svg = getSVG(view.shape, svg_opts)
-
-                    svg = base_svg
+                    try:
+                        svg = self._get_svg_for_view(view, stroke_color)
+                    except (RuntimeError, ValueError) as e:
+                        logging.warning("Skipping assembly SVG view %s: %s", full_key, e)
+                        continue
 
                     if save_files:
                         svg_path = f"{output_path}/{safe_name}_{full_key}.svg"
@@ -870,8 +878,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {component_key: filepath}.
         """
         try:
-            import drawing_2d
-            from drawing_2d import ViewPlane, ViewType
+            from drawing_2d import ViewPlane, ViewType, export_dxf_from_shape
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -926,7 +933,7 @@ class CadQueryBuilder(utils.BuilderBase):
 
                 for key, view in views.items():
                     full_key = f"{comp_name}_{key}"
-                    filepath = drawing_2d.export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type, colors=colors)
+                    filepath = export_dxf_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type, colors=colors)
                     if filepath:
                         results[full_key] = filepath
 
@@ -942,8 +949,7 @@ class CadQueryBuilder(utils.BuilderBase):
             Dict of {component_key: filepath}.
         """
         try:
-            import drawing_2d
-            from drawing_2d import ViewPlane, ViewType
+            from drawing_2d import ViewPlane, ViewType, export_fcstd_macro_from_shape
 
             if planes is None:
                 planes = [ViewPlane.XY, ViewPlane.XZ, ViewPlane.ZY]
@@ -997,7 +1003,7 @@ class CadQueryBuilder(utils.BuilderBase):
 
                 for key, view in views.items():
                     full_key = f"{comp_name}_{key}"
-                    filepath = drawing_2d.export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type)
+                    filepath = export_fcstd_macro_from_shape(view.shape, view.plane, output_path, f"{safe_name}_{full_key}", view_type=view.view_type)
                     if filepath:
                         results[full_key] = filepath
 
@@ -1048,12 +1054,10 @@ class CadQueryBuilder(utils.BuilderBase):
 
         The turn is built as 4 straight tubes + 4 corner quarter-tori.
         """
-        from OCP.gp import gp_Pnt, gp_Dir, gp_Ax1, gp_Ax2
-        from OCP.BRepPrimAPI import BRepPrimAPI_MakeTorus, BRepPrimAPI_MakeRevol
+        from OCP.gp import gp_Pnt, gp_Dir, gp_Ax2
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeTorus
         from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
         from OCP.GC import GC_MakeCircle
-        from OCP.BRep import BRep_Builder
-        from OCP.TopoDS import TopoDS_Compound
         import cadquery as cq
 
         SCALE = self.SCALE
@@ -1126,116 +1130,112 @@ class CadQueryBuilder(utils.BuilderBase):
                 turn = cq.Workplane("XY").add(cq.Shape(torus))
 
         else:
-            # Rectangular column: build using tubes and torus arcs
-            #
-            # The turn is a rounded rectangle around the column:
-            # - 4 straight tubes (one per side of the column)
-            # - 4 corner quarter-tori connecting the tubes
-            #
-            # Tube positions (wire center):
-            # - +Y side: runs along X from -half_col_depth to +half_col_depth, at Y = radial_pos
-            # - -Y side: runs along X from -half_col_depth to +half_col_depth, at Y = -radial_pos
-            # - +X side: runs along Y from -half_col_width to +half_col_width, at X = half_col_depth + turn_turn_radius
-            # - -X side: runs along Y from -half_col_width to +half_col_width, at X = -(half_col_depth + turn_turn_radius)
+            # Rectangular column: sweep a circular cross-section along a rounded rectangle path
+            from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipe
+            from OCP.GC import GC_MakeArcOfCircle
 
-            builder = BRep_Builder()
-            compound = TopoDS_Compound()
-            builder.MakeCompound(compound)
-
-            # Calculate positions
-            # Wire center on +Y and -Y sides is at radial_pos from center
-            # Wire center on +X and -X sides is at half_col_depth + turn_turn_radius from center
+            # Wire center positions
             wire_y_pos = radial_pos  # = half_col_width + turn_turn_radius
             wire_x_pos = half_col_depth + turn_turn_radius
+            r = turn_turn_radius
+            sq2 = math.sqrt(2.0) / 2.0  # cos(45°) = sin(45°)
+            z = height_pos
 
-            # Tube lengths
-            tube_x_length = 2 * half_col_depth  # tubes along X span full column depth
-            tube_y_length = 2 * half_col_width  # tubes along Y span full column width
+            # Build rounded rectangle wire path (CCW when viewed from +Z)
+            # 8 segments: 4 straight lines + 4 quarter-circle arcs
+            wire_builder = BRepBuilderAPI_MakeWire()
 
-            # +Y side tube (along X, at Y = wire_y_pos)
-            tube_py = cq.Workplane("YZ").center(wire_y_pos, height_pos).circle(wire_radius).extrude(tube_x_length).translate((-half_col_depth, 0, 0))
-            builder.Add(compound, tube_py.val().wrapped)
-
-            # -Y side tube (along X, at Y = -wire_y_pos)
-            tube_ny = cq.Workplane("YZ").center(-wire_y_pos, height_pos).circle(wire_radius).extrude(tube_x_length).translate((-half_col_depth, 0, 0))
-            builder.Add(compound, tube_ny.val().wrapped)
-
-            # +X side tube (along Y, at X = wire_x_pos)
-            # XZ plane extrudes in -Y by default, so use positive to go -Y then translate up
-            tube_px = (
-                cq.Workplane("XZ")
-                .center(wire_x_pos, height_pos)
-                .circle(wire_radius)
-                .extrude(tube_y_length)  # Goes from Y=0 to Y=-tube_y_length
-                .translate((0, half_col_width, 0))  # Shift up to center at Y=0
+            # +Y straight: (half_col_depth, wire_y_pos) → (-half_col_depth, wire_y_pos)
+            wire_builder.Add(
+                BRepBuilderAPI_MakeEdge(
+                    gp_Pnt(+half_col_depth, +wire_y_pos, z),
+                    gp_Pnt(-half_col_depth, +wire_y_pos, z),
+                ).Edge()
             )
-            builder.Add(compound, tube_px.val().wrapped)
 
-            # -X side tube (along Y, at X = -wire_x_pos)
-            tube_nx = (
-                cq.Workplane("XZ")
-                .center(-wire_x_pos, height_pos)
-                .circle(wire_radius)
-                .extrude(tube_y_length)  # Goes from Y=0 to Y=-tube_y_length
-                .translate((0, half_col_width, 0))  # Shift up to center at Y=0
+            # -X+Y arc: center (-half_col_depth, half_col_width), from (-hcd, wy) to (-wx, hcw)
+            wire_builder.Add(
+                BRepBuilderAPI_MakeEdge(
+                    GC_MakeArcOfCircle(
+                        gp_Pnt(-half_col_depth, +wire_y_pos, z),
+                        gp_Pnt(-half_col_depth - r * sq2, +half_col_width + r * sq2, z),
+                        gp_Pnt(-wire_x_pos, +half_col_width, z),
+                    ).Value()
+                ).Edge()
             )
-            builder.Add(compound, tube_nx.val().wrapped)
 
-            # Four corner arcs (quarter tori created by revolving a circle 90°)
-            # Corners are at (±half_col_depth, ±half_col_width, height_pos)
-            # Each corner has a quarter-torus connecting two adjacent tubes
-            #
-            # For each corner:
-            # 1. Create a circle (wire cross-section) at turn_turn_radius from corner
-            # 2. Revolve 90° around Z axis at corner center
+            # -X straight: (-wire_x_pos, half_col_width) → (-wire_x_pos, -half_col_width)
+            wire_builder.Add(
+                BRepBuilderAPI_MakeEdge(
+                    gp_Pnt(-wire_x_pos, +half_col_width, z),
+                    gp_Pnt(-wire_x_pos, -half_col_width, z),
+                ).Edge()
+            )
 
-            def create_quarter_torus(corner_x, corner_y, corner_z, start_angle_deg):
-                """Create a quarter torus at the given corner.
+            # -X-Y arc: center (-half_col_depth, -half_col_width)
+            wire_builder.Add(
+                BRepBuilderAPI_MakeEdge(
+                    GC_MakeArcOfCircle(
+                        gp_Pnt(-wire_x_pos, -half_col_width, z),
+                        gp_Pnt(-half_col_depth - r * sq2, -half_col_width - r * sq2, z),
+                        gp_Pnt(-half_col_depth, -wire_y_pos, z),
+                    ).Value()
+                ).Edge()
+            )
 
-                start_angle_deg: angle from +X axis where the circle starts
-                The circle will revolve 90° counterclockwise (when viewed from +Z)
-                """
-                # Circle center position (turn_turn_radius from corner, at start angle)
-                angle_rad = math.radians(start_angle_deg)
-                circle_x = corner_x + turn_turn_radius * math.cos(angle_rad)
-                circle_y = corner_y + turn_turn_radius * math.sin(angle_rad)
+            # -Y straight: (-half_col_depth, -wire_y_pos) → (half_col_depth, -wire_y_pos)
+            wire_builder.Add(
+                BRepBuilderAPI_MakeEdge(
+                    gp_Pnt(-half_col_depth, -wire_y_pos, z),
+                    gp_Pnt(+half_col_depth, -wire_y_pos, z),
+                ).Edge()
+            )
 
-                # Circle normal points tangent to the arc (perpendicular to radial direction)
-                # For counterclockwise rotation, tangent is 90° ahead
-                tangent_angle = angle_rad + math.pi / 2
-                circle_normal = gp_Dir(math.cos(tangent_angle), math.sin(tangent_angle), 0)
+            # +X-Y arc: center (half_col_depth, -half_col_width)
+            wire_builder.Add(
+                BRepBuilderAPI_MakeEdge(
+                    GC_MakeArcOfCircle(
+                        gp_Pnt(+half_col_depth, -wire_y_pos, z),
+                        gp_Pnt(+half_col_depth + r * sq2, -half_col_width - r * sq2, z),
+                        gp_Pnt(+wire_x_pos, -half_col_width, z),
+                    ).Value()
+                ).Edge()
+            )
 
-                circle_center = gp_Pnt(circle_x, circle_y, corner_z)
-                circle_axis = gp_Ax2(circle_center, circle_normal)
+            # +X straight: (wire_x_pos, -half_col_width) → (wire_x_pos, half_col_width)
+            wire_builder.Add(
+                BRepBuilderAPI_MakeEdge(
+                    gp_Pnt(+wire_x_pos, -half_col_width, z),
+                    gp_Pnt(+wire_x_pos, +half_col_width, z),
+                ).Edge()
+            )
 
-                circle = GC_MakeCircle(circle_axis, wire_radius).Value()
-                circle_edge = BRepBuilderAPI_MakeEdge(circle).Edge()
-                circle_wire = BRepBuilderAPI_MakeWire(circle_edge).Wire()
-                circle_face = BRepBuilderAPI_MakeFace(circle_wire).Face()
+            # +X+Y arc: center (half_col_depth, half_col_width)
+            wire_builder.Add(
+                BRepBuilderAPI_MakeEdge(
+                    GC_MakeArcOfCircle(
+                        gp_Pnt(+wire_x_pos, +half_col_width, z),
+                        gp_Pnt(+half_col_depth + r * sq2, +half_col_width + r * sq2, z),
+                        gp_Pnt(+half_col_depth, +wire_y_pos, z),
+                    ).Value()
+                ).Edge()
+            )
 
-                # Revolve around Z axis at corner
-                revolve_axis = gp_Ax1(gp_Pnt(corner_x, corner_y, corner_z), gp_Dir(0, 0, 1))
-                quarter = BRepPrimAPI_MakeRevol(circle_face, revolve_axis, math.pi / 2).Shape()
+            spine_wire = wire_builder.Wire()
 
-                return quarter
+            # Create circular cross-section at the first point of the path
+            # Profile plane is perpendicular to the path tangent at the start
+            # Start is at (+half_col_depth, +wire_y_pos, z), tangent is (-1, 0, 0)
+            profile_center = gp_Pnt(+half_col_depth, +wire_y_pos, z)
+            profile_axis = gp_Ax2(profile_center, gp_Dir(-1, 0, 0))
+            profile_circle = GC_MakeCircle(profile_axis, wire_radius).Value()
+            profile_edge = BRepBuilderAPI_MakeEdge(profile_circle).Edge()
+            profile_wire = BRepBuilderAPI_MakeWire(profile_edge).Wire()
+            profile_face = BRepBuilderAPI_MakeFace(profile_wire).Face()
 
-            # +X +Y corner: circle starts at +X direction (0°), sweeps to +Y
-            corner_shape = create_quarter_torus(+half_col_depth, +half_col_width, height_pos, 0)
-            builder.Add(compound, corner_shape)
-
-            # -X +Y corner: circle starts at +Y direction (90°), sweeps to -X
-            corner_shape = create_quarter_torus(-half_col_depth, +half_col_width, height_pos, 90)
-            builder.Add(compound, corner_shape)
-
-            # -X -Y corner: circle starts at -X direction (180°), sweeps to -Y
-            corner_shape = create_quarter_torus(-half_col_depth, -half_col_width, height_pos, 180)
-            builder.Add(compound, corner_shape)
-
-            # +X -Y corner: circle starts at -Y direction (270°), sweeps to +X
-            corner_shape = create_quarter_torus(+half_col_depth, -half_col_width, height_pos, 270)
-            builder.Add(compound, corner_shape)
-
-            turn = cq.Workplane("XY").add(cq.Shape(compound))
+            # Sweep the circular cross-section along the rounded rectangle path
+            pipe = BRepOffsetAPI_MakePipe(spine_wire, profile_face).Shape()
+            turn = cq.Workplane("XY").add(cq.Shape(pipe))
 
         # Scale back to meters
         final_shape = turn.val()
@@ -1672,8 +1672,46 @@ class CadQueryBuilder(utils.BuilderBase):
         # Combine all pieces into top half
         top_half = combine_shapes([inner_tube, inner_corner, radial_tube, outer_corner, outer_tube])
 
-        # Mirror to create bottom half (mirror across XZ plane at Y=0)
-        bottom_half = top_half.mirror("XZ")
+        # Build bottom half explicitly (mirror flips arc handedness, so we reconstruct)
+        # Bottom half: tubes point in -Y, corner axis flipped to -Z, Y translations negated
+
+        # B1. Inner tube: rotated +90° around X to point in -Y
+        bot_inner_tube = create_tube(tube_length)
+        bot_inner_tube = bot_inner_tube.rotate((0, 0, 0), (1, 0, 0), 90)  # Point in -Y
+
+        # B2. Inner corner: axis flipped to -Z, xref stays +X
+        bot_inner_corner_center = gp_Pnt(-bend_radius, -tube_length, 0)
+        bot_inner_corner = create_corner(bot_inner_corner_center, gp_Dir(0, 0, -1), gp_Dir(1, 0, 0))
+
+        # B3. Radial tube: same rotation around Y (radial goes in -X), but translated to -radial_height
+        bot_radial_tube = create_tube(radial_length, swap_dims=True)
+        bot_radial_tube = bot_radial_tube.rotate((0, 0, 0), (0, 1, 0), -90)  # Point in -X
+        if abs(angle_diff_deg) > 0.001:
+            bot_radial_tube = bot_radial_tube.rotate((0, 0, 0), (0, 1, 0), angle_diff_deg)
+        bot_radial_tube = bot_radial_tube.translate((-bend_radius, -radial_height, 0))
+
+        # B4. Outer corner: axis flipped to -Z, xref flipped to -Y
+        bot_outer_corner_center = gp_Pnt(-radial_distance + bend_radius, -tube_length, 0)
+        bot_outer_corner = create_corner(bot_outer_corner_center, gp_Dir(0, 0, -1), gp_Dir(0, -1, 0))
+
+        # B5. Outer tube: rotated +90° around X to point in -Y
+        bot_outer_tube = create_tube(tube_length)
+        bot_outer_tube = bot_outer_tube.rotate((0, 0, 0), (1, 0, 0), 90)  # Point in -Y
+        bot_outer_tube = bot_outer_tube.translate((-radial_distance, 0, 0))
+
+        # Apply angle offset to outer parts for multilayer (same as top half)
+        if abs(angle_diff_deg) > 0.001:
+            bot_outer_corner = bot_outer_corner.rotate((0, 0, 0), (0, 1, 0), angle_diff_deg)
+            bot_outer_tube = bot_outer_tube.rotate((0, 0, 0), (0, 1, 0), angle_diff_deg)
+
+        # Translate bottom half pieces to actual position
+        bot_inner_tube = bot_inner_tube.translate((inner_x, 0, 0))
+        bot_inner_corner = bot_inner_corner.translate((inner_x, 0, 0))
+        bot_radial_tube = bot_radial_tube.translate((inner_x, 0, 0))
+        bot_outer_corner = bot_outer_corner.translate((inner_x, 0, 0))
+        bot_outer_tube = bot_outer_tube.translate((inner_x, 0, 0))
+
+        bottom_half = combine_shapes([bot_inner_tube, bot_inner_corner, bot_radial_tube, bot_outer_corner, bot_outer_tube])
 
         # Combine top and bottom halves
         full_turn = combine_shapes([top_half, bottom_half])
@@ -1714,8 +1752,9 @@ class CadQueryBuilder(utils.BuilderBase):
 
         all_pieces = []
 
-        # Detect if this is a toroidal core
+        # Detect core type
         is_toroidal = False
+        is_c_core = False
 
         # Build core
         core_data = magnetic_data.get("core", {})
@@ -1726,9 +1765,12 @@ class CadQueryBuilder(utils.BuilderBase):
                     is_toroidal = True
                 if geometrical_part["type"] in ["half set", "toroidal"]:
                     shape_data = geometrical_part["shape"]
+                    family = shape_data.get("family", "").lower()
                     # Check if shape family is 't' (toroidal)
-                    if shape_data.get("family", "").lower() == "t":
+                    if family == "t":
                         is_toroidal = True
+                    elif family == "c":
+                        is_c_core = True
                     part_builder = CadQueryBuilder().factory(shape_data)
 
                     piece = part_builder.get_piece(data=copy.deepcopy(shape_data), name=f"Core_{index}", save_files=False, export_files=False)
@@ -1757,6 +1799,8 @@ class CadQueryBuilder(utils.BuilderBase):
         if not is_toroidal:
             bobbin_geom = self._build_bobbin_geometry(bobbin_processed)
             if bobbin_geom is not None:
+                if is_c_core:
+                    bobbin_geom = bobbin_geom.rotate((0, 0, 0), (0, 0, 1), 90)
                 all_pieces.append(bobbin_geom)
 
         # Get wire info from functionalDescription
@@ -1782,6 +1826,8 @@ class CadQueryBuilder(utils.BuilderBase):
                     )
 
             turn_geom = self.get_turn(turn_desc, wire_desc, bobbin_processed, is_toroidal=is_toroidal)
+            if is_c_core:
+                turn_geom = turn_geom.rotate((0, 0, 0), (0, 0, 1), 90)
             all_pieces.append(turn_geom)
 
         # Export
