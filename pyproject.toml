@@ -66,6 +66,11 @@ ignore = [
 "tests/*.py" = ["E402"]  # module-level import not at top (context.py path setup)
 "src/OpenMagneticsVirtualBuilder/freecad_builder.py" = ["E402"]  # conditional FreeCAD imports
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (full pipeline, deselect with '-m \"not slow\"')",
+]
+
 [tool.vulture]
 min_confidence = 80
 paths = ["src/OpenMagneticsVirtualBuilder/", "tests/"]

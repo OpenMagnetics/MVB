@@ -30,6 +30,7 @@ ALL_VIEW_TYPES = [ViewType.PROJECTION, ViewType.CROSS_SECTION]
 COMPONENTS = ["assembly", "core"]
 
 
+@pytest.mark.slow
 class TestFullPipeline:
     """Full MAS → 3D → 2D pipeline for real magnetic designs."""
 
