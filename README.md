@@ -12,26 +12,65 @@ Generate complete 3D models of magnetic components including:
 - Bobbin
 - Coil windings (turns)
 
+## Installation
+
+```bash
+pip install OpenMagneticsVirtualBuilder
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/OpenMagnetics/MVB.git
+cd MVB
+pip install -e .
+```
+
 ## Usage
 
-### Building a Core
+### Basic Setup
+
 ```python
-from builder import Builder
-import json
+from OpenMagneticsVirtualBuilder.builder import Builder
 
-# Load shape data
-with open('core_shapes.ndjson', 'r') as f:
-    shape_data = json.loads(f.readline())
+# Create builder with CadQuery engine (default)
+builder = Builder("CadQuery")
 
-# Create core
-builder = Builder()  # Uses CadQuery by default
+# Or use FreeCAD engine (requires FreeCAD installation)
+builder = Builder("FreeCAD")
+```
+
+### List Available Core Shapes
+
+```python
+from OpenMagneticsVirtualBuilder.builder import Builder
+
+builder = Builder()
+families = builder.get_families()
+
+# families is a dict with shape family names as keys
+for family_name, family_info in families.items():
+    print(f"Family: {family_name}")
+    print(f"  Info: {family_info}")
+```
+
+### Building a Core
+
+```python
+from OpenMagneticsVirtualBuilder.builder import Builder
+
+# Core with geometrical description (from MAS schema)
+geometrical_description = [...]  # Your core geometry data
+
+builder = Builder()
 result = builder.get_core("my_core", geometrical_description)
+# Returns tuple: (step_path, stl_path)
 ```
 
 ### Building a Complete Magnetic Component
+
 ```python
-from builder import Builder
-import json
+from OpenMagneticsVirtualBuilder.builder import Builder
 
 # Load MAS data with core, coil, and bobbin information
 magnetic_data = {
@@ -72,56 +111,66 @@ magnetic_data = {
 }
 
 builder = Builder()
-result = builder.get_magnetic(magnetic_data, "my_magnetic")
-print(f"Files created: {result['files']}")
+step_path, stl_path = builder.get_magnetic(magnetic_data, "my_magnetic")
+print(f"STEP file: {step_path}")
+print(f"STL file: {stl_path}")
 ```
 
 ### Building Just the Bobbin
+
 ```python
-from builder import Builder
+from OpenMagneticsVirtualBuilder.builder import Builder
 
 bobbin_data = {
-    'processedDescription': {
-        'columnDepth': 0.005,
-        'columnWidth': 0.005,
-        'columnThickness': 0.001,
-        'wallThickness': 0.001,
-        'columnShape': 'rectangular',  # or 'round'
-        'windingWindows': [{'height': 0.01, 'width': 0.003}]
+    'family': 'standard',
+    'material': 'nylon',
+    'dimensions': {
+        'wallThickness': 0.0005,
+        'flangeThickness': 0.001,
+        'flangeExtension': 0.002,
+        'pinCount': 0
     }
 }
 
-builder = Builder()
-result = builder.get_bobbin(bobbin_data, "my_bobbin")
-```
-
-### Building Just the Coil (Turns)
-```python
-from builder import Builder
-
-coil_data = {
-    'bobbin': {...},  # Bobbin processed description
-    'functionalDescription': [...],  # Winding descriptions with wire info
-    'turnsDescription': [...]  # Turn coordinates and properties
+winding_window = {
+    'width': 0.01,
+    'height': 0.02,
+    'coordinates': [0.005, 0]
 }
 
 builder = Builder()
-result = builder.get_coil(coil_data, project_name="my_coil")
+result = builder.get_bobbin(bobbin_data, winding_window, name="my_bobbin")
 ```
 
-## Engines
-
-The builder supports two CAD engines:
-- **CadQuery** (default): Cross-platform, Python-native
-- **FreeCAD**: Full CAD functionality, requires FreeCAD installation
+### Building Just the Winding
 
 ```python
-# Use CadQuery (default)
-builder = Builder("CadQuery")
+from OpenMagneticsVirtualBuilder.builder import Builder
 
-# Use FreeCAD
-builder = Builder("FreeCAD")
+winding_data = {
+    'name': 'primary',
+    'type': 'round_wire',
+    'wireDiameter': 0.0005,
+    'insulationThickness': 0.00005,
+    'numberOfTurns': 10,
+    'numberOfLayers': 2,
+    'windingDirection': 'cw'
+}
+
+bobbin_dims = {
+    'width': 0.008,
+    'height': 0.015
+}
+
+builder = Builder()
+result = builder.get_winding(winding_data, bobbin_dims, name="my_winding")
 ```
+
+## CAD Engines
+
+The builder supports two CAD engines:
+- **CadQuery** (default): Cross-platform, Python-native, no system dependencies
+- **FreeCAD**: Full CAD functionality with additional features like SVG/DXF drawings, requires FreeCAD installation
 
 ## Output Formats
 
