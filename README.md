@@ -1,6 +1,8 @@
 # Magnetics Virtual Builder
 This project holds all the Python scripts needed to produce FreeCAD and CadQuery related files from any magnetic defined following MAS schemas. These files include 2D and 3D models, meshes, and technical drawings.
 
+<img width="997" height="807" alt="image" src="https://github.com/user-attachments/assets/23fb85e2-7e76-4db1-9af5-768ac213d52f" />
+
 ## Features
 
 ### Core Generation
