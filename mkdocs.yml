@@ -1,0 +1,108 @@
+site_name: OpenMagnetics Virtual Builder
+site_url: https://openMagnetics.github.io/MVB
+site_description: Generate 3D models, meshes, and technical drawings for magnetic components
+repo_url: https://github.com/OpenMagnetics/MVB
+repo_name: OpenMagnetics/MVB
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+            members_order: source
+            docstring_style: google
+            show_signature_annotations: true
+            separate_signature: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.mark
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Engines: architecture/engines.md
+    - Shape Hierarchy: architecture/shape-hierarchy.md
+    - Data Flow: architecture/data-flow.md
+  - API Reference:
+    - Builder: api/builder.md
+    - CadQuery Builder: api/cadquery-builder.md
+    - FreeCAD Builder: api/freecad-builder.md
+    - 2D Drawings: api/drawing-2d.md
+    - Utilities: api/utils.md
+    - Shape Configs: api/shape-configs.md
+    - Magnetic Builder: api/magnetic-builder.md
+  - Tutorials:
+    - Core Generation: tutorials/core-generation.md
+    - Complete Magnetic: tutorials/complete-magnetic.md
+    - Technical Drawings: tutorials/technical-drawings.md
+    - Toroidal Winding: tutorials/toroidal-winding.md
+    - C-Core Example: tutorials/c-core-example.md
+  - Shape Catalog:
+    - Overview: shapes/index.md
+    - E Family: shapes/e-family.md
+    - P Family: shapes/p-family.md
+    - Planar Family: shapes/planar-family.md
+    - U Family: shapes/u-family.md
+    - Toroidal: shapes/toroidal-family.md
+    - C Cores: shapes/c-family.md
+  - Testing:
+    - Guide: testing/guide.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md

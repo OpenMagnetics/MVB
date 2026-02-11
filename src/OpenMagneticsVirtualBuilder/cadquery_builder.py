@@ -1,3 +1,13 @@
+"""CadQuery rendering engine for OpenMagneticsVirtualBuilder.
+
+Implements all 21 core shape families, bobbin, and winding geometry using
+the CadQuery Python CAD scripting library.  This engine requires no system
+CAD installation and is suitable for headless / CI environments.
+
+Shape classes are nested inside :class:`CadQueryBuilder` and follow the
+EN 60205 naming convention.
+"""
+
 import sys
 import math
 import os

@@ -1,0 +1,47 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'src/**'
+      - 'requirements-docs.txt'
+      - 'scripts/generate_changelog.py'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'src/**'
+      - 'requirements-docs.txt'
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Generate changelog
+        run: python scripts/generate_changelog.py > docs/changelog.md
+
+      - name: Build docs (PR check)
+        if: github.event_name == 'pull_request'
+        run: mkdocs build --strict
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: mkdocs gh-deploy --force

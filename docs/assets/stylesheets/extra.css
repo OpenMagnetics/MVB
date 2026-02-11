@@ -1,0 +1,40 @@
+/* Shape catalog SVG gallery layout */
+.svg-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.svg-gallery figure {
+    margin: 0;
+    padding: 0.5rem;
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 4px;
+    text-align: center;
+}
+
+.svg-gallery figcaption {
+    font-size: 0.85rem;
+    color: var(--md-default-fg-color--light);
+    margin-top: 0.5rem;
+}
+
+/* SVG dark mode handling */
+[data-md-color-scheme="slate"] .svg-gallery img,
+[data-md-color-scheme="slate"] .svg-gallery svg {
+    filter: invert(1) hue-rotate(180deg);
+}
+
+/* Dimension table styling */
+.md-typeset table:not([class]) th {
+    min-width: 80px;
+}
+
+/* Feature card grid on index page */
+.grid.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+}

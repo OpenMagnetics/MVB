@@ -1,0 +1,14 @@
+# MkDocs and theme
+mkdocs>=1.5
+mkdocs-material>=9.5
+
+# API documentation
+mkdocstrings[python]>=0.24
+
+# Markdown extensions
+pymdown-extensions>=10.0
+
+# Required by the source code for mkdocstrings introspection
+numpy
+cadquery @ git+https://github.com/CadQuery/cadquery.git@master
+ezdxf>=0.18
