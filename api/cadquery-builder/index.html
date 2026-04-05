@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -962,6 +962,45 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.Er" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Er
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Er">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.Er.apply_machining" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        apply_machining
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.polygon_cylinder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        polygon_cylinder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.get_magnetic_assembly" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -986,6 +1025,17 @@
         
       </ul>
     </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.get_spacers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_spacers
+      
+    </span>
+  </a>
   
 </li>
         
@@ -2073,6 +2123,45 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.Er" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Er
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Er">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.Er.apply_machining" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        apply_machining
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.polygon_cylinder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        polygon_cylinder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.get_magnetic_assembly" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2097,6 +2186,17 @@
         
       </ul>
     </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.get_spacers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_spacers
+      
+    </span>
+  </a>
   
 </li>
         
@@ -2491,6 +2591,101 @@ EN 60205 naming convention.</p>
 
 
 
+<div class="doc doc-object doc-class">
+
+
+
+<h4 id="OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.Er" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">Er</span>
+
+
+<a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.Er" class="headerlink" title="Permanent link">&para;</a></h4>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.E">E</span></code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h5 id="OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.Er.apply_machining" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">apply_machining</span>
+
+
+<a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.Er.apply_machining" class="headerlink" title="Permanent link">&para;</a></h5>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">apply_machining</span><span class="p">(</span><span class="n">piece</span><span class="p">,</span> <span class="n">machining</span><span class="p">,</span> <span class="n">dimensions</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Apply machining (gap) to the core piece.</p>
+<p>For round-center cores (ER, ETD), use a cylinder for central column machining.
+The piece's column axis is along Y (after get_piece's -90° X rotation),
+so all tools must be oriented along Y, not Z.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.polygon_cylinder" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">polygon_cylinder</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-staticmethod"><code>staticmethod</code></small>
+  </span>
+
+<a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.polygon_cylinder" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">polygon_cylinder</span><span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">radius</span><span class="p">,</span> <span class="n">n_segments</span><span class="p">,</span> <span class="n">workplane</span><span class="o">=</span><span class="s1">&#39;XY&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Create a polygon-approximated cylinder (prism) instead of a NURBS cylinder.</p>
+<p>Eliminates curved core surfaces that cause meshing conflicts with polygon wire
+cross-sections near the air gap. All surfaces become flat facets.</p>
+
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-function">
 
@@ -2517,6 +2712,139 @@ save_files : bool
     Whether to save intermediate files.
 export_files : bool
     Whether to export STEP/STL files.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.get_spacers" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">get_spacers</span>
+
+
+<a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.get_spacers" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_spacers</span><span class="p">(</span><span class="n">project_name</span><span class="p">,</span> <span class="n">geometrical_description</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="vm">__file__</span><span class="p">))</span><span class="si">}</span><span class="s1">/../../output/&#39;</span><span class="p">,</span> <span class="n">save_files</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">export_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Build only the spacers from the geometrical description.</p>
+<p>Spacers are built separately so they can be rendered with a different color.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>project_name</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Name for the output files</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>geometrical_description</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Core geometrical description from MKF</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>output_path</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Directory for output files</p>
+              </div>
+            </td>
+            <td>
+                  <code>f&#39;{<span title="os.path.dirname">dirname</span>(<span title="os.path.abspath">abspath</span>(<span title="__file__">__file__</span>))}/../../output/&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>save_files</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to save files</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>export_files</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to export files</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Tuple of (step_path, stl_path) or scaled compound if export_files is False</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
 
 
     </div>
@@ -3206,7 +3534,7 @@ export_files : bool
 
 
 <a href="#OpenMagneticsVirtualBuilder.cadquery_builder.CadQueryBuilder.get_magnetic" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_magnetic</span><span class="p">(</span><span class="n">magnetic_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">project_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Magnetic&#39;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">export_files</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">get_magnetic</span><span class="p">(</span><span class="n">magnetic_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">project_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Magnetic&#39;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">export_files</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">include_bobbin</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3721,19 +4049,19 @@ Smaller values = more accurate but more polygons.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/OpenMagneticsVirtualBuilder/cadquery_builder.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-100">100</a></span>
-<span class="normal"><a href="#__codelineno-0-101">101</a></span>
-<span class="normal"><a href="#__codelineno-0-102">102</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-102">102</a></span>
 <span class="normal"><a href="#__codelineno-0-103">103</a></span>
 <span class="normal"><a href="#__codelineno-0-104">104</a></span>
 <span class="normal"><a href="#__codelineno-0-105">105</a></span>
-<span class="normal"><a href="#__codelineno-0-106">106</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_dimensional_value</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract numeric value from dimensional data (handles dict with &#39;nominal&#39; or plain value).&quot;&quot;&quot;</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>        <span class="k">return</span> <span class="mf">0.0</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>        <span class="k">return</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nominal&quot;</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;minimum&quot;</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;maximum&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)))</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-106">106</a></span>
+<span class="normal"><a href="#__codelineno-0-107">107</a></span>
+<span class="normal"><a href="#__codelineno-0-108">108</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-102" name="__codelineno-0-102"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_dimensional_value</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<a id="__codelineno-0-103" name="__codelineno-0-103"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract numeric value from dimensional data (handles dict with &#39;nominal&#39; or plain value).&quot;&quot;&quot;</span>
+<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-105" name="__codelineno-0-105"></a>        <span class="k">return</span> <span class="mf">0.0</span>
+<a id="__codelineno-0-106" name="__codelineno-0-106"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+<a id="__codelineno-0-107" name="__codelineno-0-107"></a>        <span class="k">return</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nominal&quot;</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;minimum&quot;</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;maximum&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)))</span>
+<a id="__codelineno-0-108" name="__codelineno-0-108"></a>    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
