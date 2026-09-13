@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -2006,8 +2006,8 @@
 <h2 id="design-patterns">Design Patterns<a class="headerlink" href="#design-patterns" title="Permanent link">&para;</a></h2>
 <h3 id="strategy-pattern-engine-selection">Strategy Pattern (Engine Selection)<a class="headerlink" href="#strategy-pattern-engine-selection" title="Permanent link">&para;</a></h3>
 <p>The <code>Builder</code> class acts as a facade. At construction time it instantiates either <code>CadQueryBuilder</code> or <code>FreeCADBuilder</code>, then delegates every method call to the chosen engine:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">builder</span> <span class="o">=</span> <span class="n">Builder</span><span class="p">(</span><span class="s2">&quot;CadQuery&quot;</span><span class="p">)</span>   <span class="c1"># picks CadQueryBuilder</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">builder</span> <span class="o">=</span> <span class="n">Builder</span><span class="p">(</span><span class="s2">&quot;FreeCAD&quot;</span><span class="p">)</span>    <span class="c1"># picks FreeCADBuilder</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">builder</span> <span class="o">=</span> <span class="n">Builder</span><span class="p">(</span><span class="s2">"CadQuery"</span><span class="p">)</span>   <span class="c1"># picks CadQueryBuilder</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">builder</span> <span class="o">=</span> <span class="n">Builder</span><span class="p">(</span><span class="s2">"FreeCAD"</span><span class="p">)</span>    <span class="c1"># picks FreeCADBuilder</span>
 </code></pre></div>
 <p>Both engines inherit from <code>BuilderBase</code> and expose identical public APIs.</p>
 <h3 id="template-method-shape-generation">Template Method (Shape Generation)<a class="headerlink" href="#template-method-shape-generation" title="Permanent link">&para;</a></h3>
@@ -2142,7 +2142,7 @@ The base class defines the generation pipeline:</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
