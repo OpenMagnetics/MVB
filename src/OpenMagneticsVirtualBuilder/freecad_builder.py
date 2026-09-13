@@ -181,12 +181,11 @@ class FreeCADBuilder(utils.BuilderBase):
             FreeCAD.Rotation(FreeCAD.Vector(0.00, 0.00, 1.00), 0.00),
         )
 
-        document.recompute()
-        m = spacer.Placement.Matrix
-        m.rotateX(geometrical_data["rotation"][2])
-        m.rotateY(geometrical_data["rotation"][0])
-        m.rotateZ(geometrical_data["rotation"][1])
-        spacer.Placement.Matrix = m
+        # A spacer carries no rotation. MAS core/spacer.json defines no `rotation` field (and forbids
+        # extra properties), so a spacer is axis-aligned in the core frame by definition; this matches
+        # the CadQuery builder, which has never rotated spacers. MKF only ever wrote [0, 0, 0] for a
+        # spacer, so dropping the step moves no geometry -- it only stops a KeyError on spacers that
+        # follow the schema. (OpenMagnetics MKF ABT #1200.)
         document.recompute()
         return spacer
 
